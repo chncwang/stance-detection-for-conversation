@@ -2,7 +2,7 @@ import enum
 import traceback
 import sys
 
-class Stance(enum.Enum):
+class Stance(enum.IntEnum):
     FAVOR = 0
     AGAINST = 1
     NEUTRAL = 2
