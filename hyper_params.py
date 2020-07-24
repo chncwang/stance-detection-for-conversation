@@ -1,4 +1,4 @@
-batch_size = 2
+batch_size = 64
 seed = 0
 embedding_tuning = True
 min_freq = 2

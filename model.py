@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.autograd as autograd
 import hyper_params
+import configs
 import functools
 import torch.nn.utils.rnn as rnn
 
@@ -9,7 +10,8 @@ class LSTMClassifier(nn.Module):
     def __init__(self, vocab_size):
         super(LSTMClassifier, self).__init__()
         randn = lambda : torch.randn(2, hyper_params.batch_size,
-                hyper_params.hidden_dim, requires_grad = True)
+                hyper_params.hidden_dim, requires_grad = True).to(
+                        device = configs.device)
         self.post_init_hiddens = (randn(), randn())
         self.response_init_hiddens = (randn(), randn())
         self.embedding = nn.Embedding(vocab_size, hyper_params.word_dim)
@@ -28,7 +30,7 @@ class LSTMClassifier(nn.Module):
         return lstm(packed_tensor, init_hiddens)[0]
 
     def passSentenceToPooled(self, sentence, lengths, lstm, init_hiddens):
-        word_vectors = self.embedding(sentence)
+        word_vectors = self.embedding(sentence).to(device = configs.device)
         hiddens = self.forwardSentenceToLstm(word_vectors, lengths, lstm,
                 init_hiddens)
         hiddens = rnn.pad_packed_sequence(hiddens, batch_first = True)[0]
@@ -39,6 +41,7 @@ class LSTMClassifier(nn.Module):
 
     def forward(self, post_tensor, post_lengths, response_tensor,
             response_lengths):
+        batch_size = post_tensor.size()[0]
         post_pooled = self.passSentenceToPooled(post_tensor, post_lengths,
                 self.post_lstm, self.post_init_hiddens)
         response_pooled = self.passSentenceToPooled(response_tensor,
@@ -49,4 +52,4 @@ class LSTMClassifier(nn.Module):
         output = self.post_hidden_mlp(concat)
         output = nn.ReLU()(output)
         output = self.mlp_to_label(output)
-        return nn.LogSoftmax(1)(output)
+        return output.view(batch_size, 3)

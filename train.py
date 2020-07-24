@@ -9,6 +9,7 @@ import itertools
 import collections
 import torch.nn as nn
 import torch.optim as optim
+import sklearn.metrics as metrics
 
 torch.manual_seed(hyper_params.seed)
 
@@ -63,7 +64,8 @@ print("oov:", oov_count / float(all_words_count))
 
 vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 print("vocab len:", len(vocab))
-embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
+embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim,
+        padding_idx = 0)
 embedding_table.weight.data.uniform_(-1, 1)
 
 def word_indexes(words, stoi):
@@ -80,7 +82,7 @@ def buildDataset(samples, stoi):
     post_indexes_arr = [None] * len(samples)
     response_lens = [0] * len(samples)
     response_indexes_arr = [None] * len(samples)
-    labels = [0] * len(samples)
+    labels = [None] * len(samples)
 
     for i, sample in enumerate(samples):
         post_words = sample.post.split(" ")
@@ -110,20 +112,40 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
-model = model.LSTMClassifier(len(vocab))
+model = model.LSTMClassifier(len(vocab)).to(device = configs.device)
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
+
+CPU_DEVICE = torch.device("cpu")
+
+def evaluate(model, samples):
+    evaluation_set = buildDataset(samples)
+    evaluation_loader_params = {
+            "batch_size": configs.evaluation_batch_size,
+            "shuffle": False }
+    evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
+        **evaluation_loader_params)
+    for post_tensor, post_lengths, response_tensor, response_lengths,\
+            label_tensor in evaluation_generator:
+        post_tensor = post_tensor.to(device = configs.device)
+        response_tensor = response_tensor.to(device = configs.device)
+        predicted = model(post_tensor, post_lengths, response_tensor,
+                response_lengths)
+        predicted_idx = torch.max(predicted, 1)[1]
 
 for epoch_i in itertools.count(0):
     if epoch_i > 10:
         break
     batch_i = -1
+    predicted_idxes = []
+    ground_truths = []
+    loss_sum = 0.0
     for post_tensor, post_lengths, response_tensor, response_lengths,\
             label_tensor in training_generator:
         batch_i += 1
 
-        should_print = batch_i * hyper_params.batch_size % 10000 == 0
+        should_print = batch_i * hyper_params.batch_size % 100 == 0
         if should_print:
             post_words = [vocab.itos[x] for x in post_tensor[0] if x != PAD_ID]
             print("post:", " ".join(post_words))
@@ -131,7 +153,20 @@ for epoch_i in itertools.count(0):
                     if x != PAD_ID]
             print("response:", " ".join(response_words))
 
-        predecited = model(post_tensor, post_lengths, response_tensor,
+        model.zero_grad()
+        post_tensor = post_tensor.to(device = configs.device)
+        response_tensor = response_tensor.to(device = configs.device)
+        predicted = model(post_tensor, post_lengths, response_tensor,
                 response_lengths)
-
-        sys.exit(0)
+        label_tensor = label_tensor.to(device = configs.device)
+        loss = nn.CrossEntropyLoss()(predicted, label_tensor)
+        loss.backward()
+        optimizer.step()
+        predicted_idx = torch.max(predicted, 1)[1]
+        predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
+                int())
+        ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
+        loss_sum += loss
+        if should_print:
+            acc = metrics.accuracy_score(ground_truths, predicted_idxes)
+            print("acc:", acc)
