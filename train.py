@@ -1,3 +1,4 @@
+import datetime
 import sys
 import model
 import torch
@@ -10,6 +11,12 @@ import collections
 import torch.nn as nn
 import torch.optim as optim
 import sklearn.metrics as metrics
+import logging
+import log_config
+import os
+import utils
+
+logger = utils.getLogger(__file__)
 
 torch.manual_seed(hyper_params.seed)
 
@@ -60,10 +67,10 @@ for idx, sample in enumerate(to_build_vocb_samples):
     oov_count += t[0]
     all_words_count += t[1]
 
-print("oov:", oov_count / float(all_words_count))
+logger.info("oov:%f", oov_count / float(all_words_count))
 
 vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
-print("vocab len:", len(vocab))
+logger.info("vocab len:%d", len(vocab))
 embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim,
         padding_idx = 0)
 embedding_table.weight.data.uniform_(-1, 1)
@@ -126,6 +133,8 @@ def evaluate(model, samples):
             "shuffle": False }
     evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
         **evaluation_loader_params)
+    predicted_idxes = []
+    ground_truths = []
     for post_tensor, post_lengths, response_tensor, response_lengths,\
             label_tensor in evaluation_generator:
         post_tensor = post_tensor.to(device = configs.device)
@@ -133,6 +142,10 @@ def evaluate(model, samples):
         predicted = model(post_tensor, post_lengths, response_tensor,
                 response_lengths)
         predicted_idx = torch.max(predicted, 1)[1]
+        predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
+                int())
+        ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
+
 
 for epoch_i in itertools.count(0):
     if epoch_i > 10:
@@ -148,10 +161,10 @@ for epoch_i in itertools.count(0):
         should_print = batch_i * hyper_params.batch_size % 100 == 0
         if should_print:
             post_words = [vocab.itos[x] for x in post_tensor[0] if x != PAD_ID]
-            print("post:", " ".join(post_words))
+            logger.info("post:%s", " ".join(post_words))
             response_words = [vocab.itos[x] for x in response_tensor[0]
                     if x != PAD_ID]
-            print("response:", " ".join(response_words))
+            logger.info("response:%s", " ".join(response_words))
 
         model.zero_grad()
         post_tensor = post_tensor.to(device = configs.device)
@@ -169,4 +182,4 @@ for epoch_i in itertools.count(0):
         loss_sum += loss
         if should_print:
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-            print("acc:", acc)
+            logger.info("acc:%f", acc)

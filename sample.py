@@ -1,6 +1,10 @@
 import enum
 import traceback
 import sys
+import log_config
+import utils
+
+logger = utils.getLogger(__file__)
 
 class Stance(enum.IntEnum):
     FAVOR = 0
@@ -15,7 +19,7 @@ def toStance(str):
     elif str == "n" or str == "u":
         return Stance.NEUTRAL
     else:
-        print("error:", str)
+        logger.error(str)
         traceback.print_stack()
         sys.exit(1)
 
