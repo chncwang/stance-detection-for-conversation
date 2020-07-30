@@ -7,14 +7,14 @@ import functools
 import torch.nn.utils.rnn as rnn
 
 class LSTMClassifier(nn.Module):
-    def __init__(self, vocab_size):
+    def __init__(self, embedding):
         super(LSTMClassifier, self).__init__()
         randn = lambda : torch.randn(2, hyper_params.batch_size,
                 hyper_params.hidden_dim, requires_grad = True).to(
                         device = configs.device)
         self.post_init_hiddens = (randn(), randn())
         self.response_init_hiddens = (randn(), randn())
-        self.embedding = nn.Embedding(vocab_size, hyper_params.word_dim)
+        self.embedding = embedding
         self.post_lstm = nn.LSTM(hyper_params.word_dim,
                 hyper_params.hidden_dim, bidirectional = True)
         self.response_lstm = nn.LSTM(hyper_params.word_dim,

@@ -23,7 +23,7 @@ hyper_params = imp.load_source("module.name", sys.argv[1])
 def printHyperParams():
     logger.info("batch_size:%d", hyper_params.batch_size)
     logger.info("seed:%d", hyper_params.seed)
-    logger.info("embedding_tuning:%b", hyper_params.embedding_tuning)
+    logger.info("embedding_tuning:%r", hyper_params.embedding_tuning)
     logger.info("min_freq:%d", hyper_params.min_freq)
     logger.info("word_dim:%d", hyper_params.word_dim)
     logger.info("hidden_dim:%d", hyper_params.hidden_dim)
@@ -89,7 +89,6 @@ vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
 embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim,
         padding_idx = 0)
-embedding_table.weight.data.uniform_(-1, 1)
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
@@ -135,7 +134,7 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
-model = model.LSTMClassifier(len(vocab)).to(device = configs.device)
+model = model.LSTMClassifier(embedding_table).to(device = configs.device)
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
