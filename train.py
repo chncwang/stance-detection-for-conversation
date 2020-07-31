@@ -84,11 +84,20 @@ for idx, sample in enumerate(to_build_vocb_samples):
     all_words_count += t[1]
 
 logger.info("oov:%f", oov_count / float(all_words_count))
+word_vectors = torchtext.vocab.Vectors(
+        "/var/wqs/cn_embeddings/sgns.weibo.bigram-char")
+
+if not hyper_params.embedding_tuning:
+    for k in counter.keys():
+        if counter[k] < hyper_params.min_freq and k in word_vectors.stoi:
+            counter[k] = 10000
 
 vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
-embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim,
-        padding_idx = 0)
+vocab.load_vectors(word_vectors)
+embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
+        freeze = hyper_params.embedding_tuning)
+logger.debug(embedding_table(torch.LongTensor([vocab.stoi["赵本山"]])))
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
@@ -182,6 +191,8 @@ for epoch_i in itertools.count(0):
         if should_print:
             post_words = [vocab.itos[x] for x in post_tensor[0] if x != PAD_ID]
             logger.info("post:%s", " ".join(post_words))
+            logger.debug("word vectors:%s", model.embedding(post_tensor[0].to(
+                    configs.device)))
             response_words = [vocab.itos[x] for x in response_tensor[0]
                     if x != PAD_ID]
             logger.info("response:%s", " ".join(response_words))
