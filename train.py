@@ -31,6 +31,7 @@ def printHyperParams():
     logger.info("learning_rate:%f", hyper_params.learning_rate)
     logger.info("weight_decay:%f", hyper_params.weight_decay)
     logger.info("clip_grad:%f", hyper_params.clip_grad)
+    logger.info("layer:%d", hyper_params.layer)
 
 printHyperParams()
 

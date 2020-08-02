@@ -9,16 +9,18 @@ import torch.nn.utils.rnn as rnn
 class LSTMClassifier(nn.Module):
     def __init__(self, embedding):
         super(LSTMClassifier, self).__init__()
-        randn = lambda : torch.randn(2, hyper_params.batch_size,
-                hyper_params.hidden_dim, requires_grad = True).to(
-                        device = configs.device)
+        randn = lambda : torch.randn(2 * hyper_params.layer,
+                hyper_params.batch_size, hyper_params.hidden_dim,
+                requires_grad = True).to(device = configs.device)
         self.post_init_hiddens = (randn(), randn())
         self.response_init_hiddens = (randn(), randn())
         self.embedding = embedding
         self.post_lstm = nn.LSTM(hyper_params.word_dim,
-                hyper_params.hidden_dim, bidirectional = True)
+                hyper_params.hidden_dim, bidirectional = True,
+                num_layers = hyper_params.layer)
         self.response_lstm = nn.LSTM(hyper_params.word_dim,
-                hyper_params.hidden_dim, bidirectional = True)
+                hyper_params.hidden_dim, bidirectional = True,
+                num_layers = hyper_params.layer)
         self.post_hidden_mlp = nn.Linear(hyper_params.hidden_dim * 4,
                 hyper_params.hidden_dim)
         self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3)
