@@ -14,9 +14,11 @@ def readSamples(path, posts, responses):
             sample.toStance(x[2])) for x in fragments]
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, sentence_tensor, sentence_lengths, label_tensor):
+    def __init__(self, sentence_tensor, sentence_lengths, src_mask,
+            label_tensor):
         self.sentence_tensor = sentence_tensor
         self.sentence_lengths = sentence_lengths
+        self.src_mask = src_mask
         self.label_tensor = label_tensor
 
     def __len__(self):
@@ -24,4 +26,4 @@ class Dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.sentence_tensor[idx], self.sentence_lengths[idx],\
-                self.label_tensor[idx]
+                self.src_mask[idx], self.label_tensor[idx]

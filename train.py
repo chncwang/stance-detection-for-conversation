@@ -1,4 +1,5 @@
 import datetime
+import math
 import sys
 import model
 import torch
@@ -101,11 +102,18 @@ embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
 
-def pad_batch(word_ids_arr, lenghs):
-    tensor = torch.ones(len(word_ids_arr), max(lenghs), dtype = int)
-    for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lenghs)):
+def pad_batch(word_ids_arr, lens):
+    tensor = torch.ones(len(word_ids_arr), max(lens), dtype = int)
+    for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lens)):
         x = torch.LongTensor(ids)
         tensor[idx, :seq_len] = x
+    return tensor
+
+def srcMask(word_ids_arr, lens):
+    max_len = max(lens)
+    tensor = torch.zeros(len(word_ids_arr), max_len, dtype = torch.bool)
+    for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lens)):
+        tensor[idx, seq_len:] = torch.FloatTensor([True] * (max_len - seq_len))
     return tensor
 
 def buildDataset(samples, stoi):
@@ -114,11 +122,12 @@ def buildDataset(samples, stoi):
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
     labels = [int(s.stance) for s in samples]
-
     sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
+    src_key_padding_mask = srcMask(sentences_indexes_arr, sentence_lens)
     label_tensor = torch.LongTensor(labels)
 
-    return dataset.Dataset(sentence_tensor, sentence_lens, label_tensor)
+    return dataset.Dataset(sentence_tensor, sentence_lens,
+            src_key_padding_mask, label_tensor)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 
@@ -128,7 +137,8 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
-model = model.LSTMClassifier(embedding_table).to(device = configs.device)
+model = model.TransformerClassifier(embedding_table).to(
+        device = configs.device)
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
@@ -144,9 +154,10 @@ def evaluate(model, samples):
         **evaluation_loader_params)
     predicted_idxes = []
     ground_truths = []
-    for sentence_tensor, sentence_lens, label_tensor in evaluation_generator:
+    for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in\
+            evaluation_generator:
         sentence_tensor = sentence_tensor.to(device = configs.device)
-        predicted = model(sentence_tensor, sentence_lens)
+        predicted = model(sentence_tensor, sentence_lens, src_key_padding_mask)
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
                 int())
@@ -165,7 +176,8 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
-    for sentence_tensor, sentence_lens, label_tensor in training_generator:
+    for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in\
+            training_generator:
         batch_i += 1
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
@@ -175,7 +187,7 @@ for epoch_i in itertools.count(0):
 
         model.zero_grad()
         sentence_tensor = sentence_tensor.to(device = configs.device)
-        predicted = model(sentence_tensor, sentence_lens)
+        predicted = model(sentence_tensor, sentence_lens, src_key_padding_mask)
         label_tensor = label_tensor.to(device = configs.device)
         loss = nn.CrossEntropyLoss()(predicted, label_tensor)
         loss.backward()
