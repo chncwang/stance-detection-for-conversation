@@ -66,8 +66,7 @@ def sentenceToCounter(sentence, counter):
 
 counter = collections.Counter()
 for idx, sample in enumerate(to_build_vocb_samples):
-    sentenceToCounter(sample.post, counter)
-    sentenceToCounter(sample.response, counter)
+    sentenceToCounter(sample.post + " <SEP> " + sample.response, counter)
 
 def oovCount(sentence, counter):
     words = sentence.split(" ")
@@ -80,7 +79,7 @@ def oovCount(sentence, counter):
 oov_count = 0
 all_words_count = 0
 for idx, sample in enumerate(to_build_vocb_samples):
-    t = oovCount(sample.post, counter)
+    t = oovCount(sample.post + " <SEP> " + sample.response, counter)
     oov_count += t[0]
     all_words_count += t[1]
 
@@ -98,7 +97,6 @@ logger.info("vocab len:%d", len(vocab))
 vocab.load_vectors(word_vectors)
 embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
         freeze = hyper_params.embedding_tuning)
-logger.debug(embedding_table(torch.LongTensor([vocab.stoi["赵本山"]])))
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
@@ -106,35 +104,21 @@ def word_indexes(words, stoi):
 def pad_batch(word_ids_arr, lenghs):
     tensor = torch.ones(len(word_ids_arr), max(lenghs), dtype = int)
     for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lenghs)):
-        tensor[idx, :seq_len] = torch.LongTensor(ids)
+        x = torch.LongTensor(ids)
+        tensor[idx, :seq_len] = x
     return tensor
 
 def buildDataset(samples, stoi):
-    post_lens = [0] * len(samples)
-    post_indexes_arr = [None] * len(samples)
-    response_lens = [0] * len(samples)
-    response_indexes_arr = [None] * len(samples)
-    labels = [None] * len(samples)
+    sentences = [s.post + " <SEP> " + s.response for s in samples]
+    words_arr = [s.split(" ") for s in sentences]
+    sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
+    sentence_lens = [len(s) for s in words_arr]
+    labels = [int(s.stance) for s in samples]
 
-    for i, sample in enumerate(samples):
-        post_words = sample.post.split(" ")
-        post_len = len(post_words)
-        post_lens[i] = post_len
-        post_indexes = word_indexes(post_words, stoi)
-        post_indexes_arr[i] = post_indexes
-        response_words = sample.response.split(" ")
-        response_len = len(response_words)
-        response_lens[i] = response_len
-        response_indexes = word_indexes(response_words, stoi)
-        response_indexes_arr[i] = response_indexes
-        labels[i] = int(sample.stance)
-
-    post_tensor = pad_batch(post_indexes_arr, post_lens)
-    response_tensor = pad_batch(response_indexes_arr, response_lens)
+    sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
     label_tensor = torch.LongTensor(labels)
 
-    return dataset.Dataset(post_tensor, post_lens, response_tensor,
-            response_lens, label_tensor)
+    return dataset.Dataset(sentence_tensor, sentence_lens, label_tensor)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 
@@ -160,12 +144,9 @@ def evaluate(model, samples):
         **evaluation_loader_params)
     predicted_idxes = []
     ground_truths = []
-    for post_tensor, post_lengths, response_tensor, response_lengths,\
-            label_tensor in evaluation_generator:
-        post_tensor = post_tensor.to(device = configs.device)
-        response_tensor = response_tensor.to(device = configs.device)
-        predicted = model(post_tensor, post_lengths, response_tensor,
-                response_lengths)
+    for sentence_tensor, sentence_lens, label_tensor in evaluation_generator:
+        sentence_tensor = sentence_tensor.to(device = configs.device)
+        predicted = model(sentence_tensor, sentence_lens)
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
                 int())
@@ -184,25 +165,17 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
-    for post_tensor, post_lengths, response_tensor, response_lengths,\
-            label_tensor in training_generator:
+    for sentence_tensor, sentence_lens, label_tensor in training_generator:
         batch_i += 1
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
         if should_print:
-            post_words = [vocab.itos[x] for x in post_tensor[0] if x != PAD_ID]
-            logger.info("post:%s", " ".join(post_words))
-            logger.debug("word vectors:%s", model.embedding(post_tensor[0].to(
-                    configs.device)))
-            response_words = [vocab.itos[x] for x in response_tensor[0]
-                    if x != PAD_ID]
-            logger.info("response:%s", " ".join(response_words))
+            words = [vocab.itos[x] for x in sentence_tensor[0] if x != PAD_ID]
+            logger.info("sentence:%s", " ".join(words))
 
         model.zero_grad()
-        post_tensor = post_tensor.to(device = configs.device)
-        response_tensor = response_tensor.to(device = configs.device)
-        predicted = model(post_tensor, post_lengths, response_tensor,
-                response_lengths)
+        sentence_tensor = sentence_tensor.to(device = configs.device)
+        predicted = model(sentence_tensor, sentence_lens)
         label_tensor = label_tensor.to(device = configs.device)
         loss = nn.CrossEntropyLoss()(predicted, label_tensor)
         loss.backward()

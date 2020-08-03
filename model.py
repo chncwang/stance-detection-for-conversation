@@ -12,18 +12,12 @@ class LSTMClassifier(nn.Module):
         randn = lambda : torch.randn(2 * hyper_params.layer,
                 hyper_params.batch_size, hyper_params.hidden_dim,
                 requires_grad = True).to(device = configs.device)
-        self.post_init_hiddens = (randn(), randn())
-        self.response_init_hiddens = (randn(), randn())
+        self.init_hiddens = (randn(), randn())
         self.embedding = embedding
-        self.post_lstm = nn.LSTM(hyper_params.word_dim,
+        self.lstm = nn.LSTM(hyper_params.word_dim,
                 hyper_params.hidden_dim, bidirectional = True,
                 num_layers = hyper_params.layer)
-        self.response_lstm = nn.LSTM(hyper_params.word_dim,
-                hyper_params.hidden_dim, bidirectional = True,
-                num_layers = hyper_params.layer)
-        self.post_hidden_mlp = nn.Linear(hyper_params.hidden_dim * 4,
-                hyper_params.hidden_dim)
-        self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3)
+        self.mlp_to_label = nn.Linear(hyper_params.hidden_dim * 2, 3)
 
     def forwardSentenceToLstm(self, input_tensor, lengths, lstm, init_hiddens):
         nn.Dropout(p = hyper_params.dropout, inplace = True)(input_tensor)
@@ -41,17 +35,10 @@ class LSTMClassifier(nn.Module):
         seq_len = hiddens.size()[2]
         return nn.MaxPool1d(seq_len)(hiddens)
 
-    def forward(self, post_tensor, post_lengths, response_tensor,
-            response_lengths):
-        batch_size = post_tensor.size()[0]
-        post_pooled = self.passSentenceToPooled(post_tensor, post_lengths,
-                self.post_lstm, self.post_init_hiddens)
-        response_pooled = self.passSentenceToPooled(response_tensor,
-                response_lengths, self.response_lstm,
-                self.response_init_hiddens)
-        concat = torch.cat((post_pooled, response_pooled), 1)
-        concat = concat.permute(0, 2, 1)
-        output = self.post_hidden_mlp(concat)
-        output = nn.ReLU()(output)
-        output = self.mlp_to_label(output)
+    def forward(self, sentence_tensor, sentence_lens):
+        batch_size = sentence_tensor.size()[0]
+        sentence_pooled = self.passSentenceToPooled(sentence_tensor,
+                sentence_lens, self.lstm, self.init_hiddens)
+        sentence_pooled = sentence_pooled.permute(0, 2, 1)
+        output = self.mlp_to_label(sentence_pooled)
         return output.view(batch_size, 3)

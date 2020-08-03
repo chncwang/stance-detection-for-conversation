@@ -14,18 +14,14 @@ def readSamples(path, posts, responses):
             sample.toStance(x[2])) for x in fragments]
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, post_tensor, post_lengths, response_tensor,
-            response_lengths, label_tensor):
-        self.post_tensor = post_tensor
-        self.post_lengths = post_lengths
-        self.response_tensor = response_tensor
-        self.response_lengths = response_lengths
+    def __init__(self, sentence_tensor, sentence_lengths, label_tensor):
+        self.sentence_tensor = sentence_tensor
+        self.sentence_lengths = sentence_lengths
         self.label_tensor = label_tensor
 
     def __len__(self):
         return len(self.label_tensor)
 
     def __getitem__(self, idx):
-        return self.post_tensor[idx], self.post_lengths[idx],\
-                self.response_tensor[idx], self.response_lengths[idx],\
+        return self.sentence_tensor[idx], self.sentence_lengths[idx],\
                 self.label_tensor[idx]
