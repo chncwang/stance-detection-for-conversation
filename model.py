@@ -1,4 +1,5 @@
 import torch
+import math
 import torch.nn as nn
 import torch.autograd as autograd
 import hyper_params
@@ -26,9 +27,8 @@ class TransformerClassifier(nn.Module):
         nn.Dropout(p = hyper_params.dropout, inplace = True)(input_tensor)
         input_tensor = self.input_linear(input_tensor).permute(1, 0, 2)
         logger.debug("input_tensor size:%s", input_tensor.size())
-        return transformer(input_tensor)
-#         return transformer(input_tensor,
-#                 src_key_padding_mask = src_key_padding_mask)
+        return transformer(input_tensor,
+                src_key_padding_mask = src_key_padding_mask)
 
     def passSentenceToPooled(self, sentence, lens, src_key_padding_mask,
             transformer):
@@ -37,9 +37,21 @@ class TransformerClassifier(nn.Module):
                 src_key_padding_mask, transformer)
         nn.Dropout(p = hyper_params.dropout, inplace = True)(hiddens)
         logger.debug("hiddens size:%s", hiddens.size())
-        hiddens = hiddens.permute(1, 2, 0)
-        seq_len = hiddens.size()[2]
-        return nn.MaxPool1d(seq_len)(hiddens)
+        hiddens = hiddens.permute(1, 0, 2)
+        logger.debug("hiddens size:%s", hiddens.size())
+        max_len = hiddens.size()[1]
+
+        for idx, sent_hiddens in enumerate(hiddens):
+            x = torch.FloatTensor([-math.inf] * hyper_params.hidden_dim *
+                    (max_len - lens[idx])).view(max_len - lens[idx],
+                            hyper_params.hidden_dim)
+            logger.debug("x size:%s hiddens[idx] size:%s len:%d", x.size(),
+                    hiddens[idx].size(), lens[idx])
+            sent_hiddens[lens[idx]:] = x
+
+        hiddens = hiddens.permute(0, 2, 1)
+        logger.debug("hiddens:%s", hiddens)
+        return nn.MaxPool1d(max_len)(hiddens)
 
     def forward(self, sentence_tensor, sentence_lens, src_key_padding_mask):
         logger.debug("src_key_padding_mask size:%s",

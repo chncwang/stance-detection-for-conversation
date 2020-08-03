@@ -165,6 +165,7 @@ def evaluate(model, samples):
 step = 0
 
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
+        betas = (0.9, 0.98), eps = 1e-9,
         weight_decay = hyper_params.weight_decay)
 
 stagnation_epochs = 0
