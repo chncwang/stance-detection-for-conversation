@@ -139,8 +139,6 @@ training_generator = torch.utils.data.DataLoader(training_set,
 
 model = model.TransformerClassifier(embedding_table).to(
         device = configs.device)
-optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
-        weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
 
 CPU_DEVICE = torch.device("cpu")
@@ -164,9 +162,15 @@ def evaluate(model, samples):
         ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
     return metrics.f1_score(ground_truths, predicted_idxes, average = None)
 
+step = 0
+
+optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
+        weight_decay = hyper_params.weight_decay)
+
 stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_macro, best_test_macro = 0.0, 0.0
+
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 10:
         break
@@ -179,11 +183,15 @@ for epoch_i in itertools.count(0):
     for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in\
             training_generator:
         batch_i += 1
+        step += 1
+        lr = math.pow(hyper_params.hidden_dim, -0.5) * min(pow(step, -0.5),
+                step * pow(hyper_params.warm_up_steps, -1.5))
 
-        should_print = batch_i * hyper_params.batch_size % 1000 == 0
+        should_print = batch_i * hyper_params.batch_size % 100 == 0
         if should_print:
             words = [vocab.itos[x] for x in sentence_tensor[0] if x != PAD_ID]
             logger.info("sentence:%s", " ".join(words))
+            logger.info("step:%d lr:%f", step, lr)
 
         model.zero_grad()
         sentence_tensor = sentence_tensor.to(device = configs.device)
@@ -194,6 +202,8 @@ for epoch_i in itertools.count(0):
         if hyper_params.clip_grad is not None:
             nn.utils.clip_grad_norm_(model.parameters(),
                     hyper_params.clip_grad)
+        for g in optimizer.param_groups:
+            g["lr"] = lr
         optimizer.step()
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
