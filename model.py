@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
-import hyper_params
 import configs
 import functools
 import torch.nn.utils.rnn as rnn
+import imp
+import sys
+
+hyper_params = imp.load_source("module.name", sys.argv[1])
 
 class LSTMClassifier(nn.Module):
     def __init__(self, embedding):
