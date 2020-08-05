@@ -1,6 +1,6 @@
 import datetime
 import sys
-import model
+import classifier_module
 import torch
 import torchtext
 import configs
@@ -105,7 +105,8 @@ def buildDataset(samples, stoi):
     sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
     label_tensor = torch.LongTensor(labels)
 
-    return dataset.Dataset(sentence_tensor, sentence_lens, label_tensor)
+    return dataset.StanceDetectionDataset(sentence_tensor, sentence_lens,
+            label_tensor)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 
@@ -115,7 +116,8 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
-model = model.LSTMClassifier(embedding_table).to(device = configs.device)
+model = classifier_module.LSTMClassifier(embedding_table).to(
+        device = configs.device)
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]

@@ -1,5 +1,8 @@
 import sample
 import torch
+import utils
+
+logger = utils.getLogger(__file__)
 
 def readLines(path):
     return open(path).read().splitlines()
@@ -13,7 +16,7 @@ def readSamples(path, posts, responses):
     return [sample.Sample(posts[int(x[0])], responses[int(x[1])],
             sample.toStance(x[2])) for x in fragments]
 
-class Dataset(torch.utils.data.Dataset):
+class StanceDetectionDataset(torch.utils.data.Dataset):
     def __init__(self, sentence_tensor, sentence_lengths, label_tensor):
         self.sentence_tensor = sentence_tensor
         self.sentence_lengths = sentence_lengths
@@ -25,3 +28,14 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.sentence_tensor[idx], self.sentence_lengths[idx],\
                 self.label_tensor[idx]
+
+def readLmSentences(path, posts, responses):
+    lines = readLines(path)
+    sentences = [None] * len(lines)
+    for i, line in enumerate(lines):
+        strs = line.split(" ")
+        pi, ri = int(strs[0]), int(strs[1])
+        p, r = posts[pi], responses[ri]
+        sentences[i] = "<BEGIN> " + p + " <SEP> " + r + " <END>"
+    logger.debug("len:%d sentences:%s", len(sentences), sentences[:5])
+    return sentences

@@ -1,6 +1,5 @@
 import datetime
 import sys
-import model
 import torch
 import torchtext
 import configs
@@ -20,7 +19,7 @@ logger = utils.getLogger(__file__)
 
 hyper_params = imp.load_source("module.name", sys.argv[1])
 
-utils.printHyperParams(hyper_params)
+utils.printLmHyperParams(hyper_params)
 
 torch.manual_seed(hyper_params.seed)
 
@@ -28,24 +27,17 @@ posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts")
 responses = dataset.readConversationSentences(
         "/var/wqs/weibo_dialogue/responses")
 
-def readSamples(path):
-    return dataset.readSamples(path, posts, responses)
+def readSentences(path):
+    return dataset.readLmSentences(path, posts, responses)
 
-training_samples = readSamples(
-        "/var/wqs/conversation-stance-corpus/overall_filtered/"\
-                "overall_filtered_train")
-dev_samples = readSamples(
-        "/var/wqs/conversation-stance-corpus/overall_filtered/"\
-                "overall_filtered_dev")
-test_samples = readSamples(
-        "/var/wqs/conversation-stance-corpus/overall_filtered/"\
-                "overall_filtered_test")
+training_samples = readSentences("/var/wqs/stance-lm/train")
+dev_samples = readSentences("/var/wqs/stance-lm/dev")
 
 to_build_vocb_samples = None
 if hyper_params.embedding_tuning:
     to_build_vocb_samples = training_samples
 else:
-    to_build_vocb_samples = training_samples + dev_samples + test_samples
+    to_build_vocb_samples = training_samples + dev_samples
 
 def sentenceToCounter(sentence, counter):
     words = sentence.split(" ")
@@ -53,7 +45,7 @@ def sentenceToCounter(sentence, counter):
 
 counter = collections.Counter()
 for idx, sample in enumerate(to_build_vocb_samples):
-    sentenceToCounter(sample.post + " <SEP> " + sample.response, counter)
+    sentenceToCounter(sample, counter)
 
 def oovCount(sentence, counter):
     words = sentence.split(" ")
@@ -66,7 +58,7 @@ def oovCount(sentence, counter):
 oov_count = 0
 all_words_count = 0
 for idx, sample in enumerate(to_build_vocb_samples):
-    t = oovCount(sample.post + " <SEP> " + sample.response, counter)
+    t = oovCount(sample, counter)
     oov_count += t[0]
     all_words_count += t[1]
 
