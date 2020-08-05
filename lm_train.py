@@ -23,9 +23,9 @@ utils.printLmHyperParams(hyper_params)
 
 torch.manual_seed(hyper_params.seed)
 
-posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts")
+posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts-bpe")
 responses = dataset.readConversationSentences(
-        "/var/wqs/weibo_dialogue/responses")
+        "/var/wqs/weibo_dialogue/responses-bpe")
 
 def readSentences(path):
     return dataset.readLmSentences(path, posts, responses)
