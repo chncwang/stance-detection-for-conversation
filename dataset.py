@@ -17,16 +17,16 @@ def readSamples(path, posts, responses):
             sample.toStance(x[2])) for x in fragments]
 
 class StanceDetectionDataset(torch.utils.data.Dataset):
-    def __init__(self, sentence_tensor, sentence_lengths, label_tensor):
+    def __init__(self, sentence_tensor, sentence_lens, label_tensor):
         self.sentence_tensor = sentence_tensor
-        self.sentence_lengths = sentence_lengths
+        self.sentence_lens = sentence_lens
         self.label_tensor = label_tensor
 
     def __len__(self):
         return len(self.label_tensor)
 
     def __getitem__(self, idx):
-        return self.sentence_tensor[idx], self.sentence_lengths[idx],\
+        return self.sentence_tensor[idx], self.sentence_lens[idx],\
                 self.label_tensor[idx]
 
 def readLmSentences(path, posts, responses):
@@ -41,12 +41,12 @@ def readLmSentences(path, posts, responses):
     return sentences
 
 class LmDataset(torch.utils.data.Dataset):
-    def __init__(self, sentence_tensor, sentence_lengths):
+    def __init__(self, sentence_tensor, sentence_lens):
         self.sentence_tensor = sentence_tensor
-        self.sentence_lengths = sentence_lengths
+        self.sentence_lens = sentence_lens
 
     def __len__(self):
-        return len(self.sentence_lengths)
+        return len(self.sentence_lens)
 
     def __getitem__(self, idx):
-        return self.sentence_tensor[idx], self.sentence_lengths[idx]
+        return self.sentence_tensor[idx], self.sentence_lens[idx]

@@ -22,15 +22,15 @@ class LSTMClassifier(nn.Module):
                 num_layers = hyper_params.layer)
         self.mlp_to_label = nn.Linear(hyper_params.hidden_dim * 2, 3)
 
-    def forwardSentenceToLstm(self, input_tensor, lengths, lstm, init_hiddens):
+    def forwardSentenceToLstm(self, input_tensor, lens, lstm, init_hiddens):
         nn.Dropout(p = hyper_params.dropout, inplace = True)(input_tensor)
-        packed_tensor = rnn.pack_padded_sequence(input_tensor, lengths,
+        packed_tensor = rnn.pack_padded_sequence(input_tensor, lens,
                 batch_first = True, enforce_sorted = False)
         return lstm(packed_tensor, init_hiddens)[0]
 
-    def passSentenceToPooled(self, sentence, lengths, lstm, init_hiddens):
+    def passSentenceToPooled(self, sentence, lens, lstm, init_hiddens):
         word_vectors = self.embedding(sentence).to(device = configs.device)
-        hiddens = self.forwardSentenceToLstm(word_vectors, lengths, lstm,
+        hiddens = self.forwardSentenceToLstm(word_vectors, lens, lstm,
                 init_hiddens)
         hiddens = rnn.pad_packed_sequence(hiddens, batch_first = True)[0]
         nn.Dropout(p = hyper_params.dropout, inplace = True)(hiddens)
