@@ -36,6 +36,17 @@ def readLmSentences(path, posts, responses):
         strs = line.split(" ")
         pi, ri = int(strs[0]), int(strs[1])
         p, r = posts[pi], responses[ri]
-        sentences[i] = "<BEGIN> " + p + " <SEP> " + r + " <END>"
+        sentences[i] = "<begin> " + p + " <sep> " + r + " <end>"
     logger.debug("len:%d sentences:%s", len(sentences), sentences[:5])
     return sentences
+
+class LmDataset(torch.utils.data.Dataset):
+    def __init__(self, sentence_tensor, sentence_lengths):
+        self.sentence_tensor = sentence_tensor
+        self.sentence_lengths = sentence_lengths
+
+    def __len__(self):
+        return len(self.sentence_lengths)
+
+    def __getitem__(self, idx):
+        return self.sentence_tensor[idx], self.sentence_lengths[idx]

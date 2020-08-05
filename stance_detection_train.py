@@ -53,7 +53,7 @@ def sentenceToCounter(sentence, counter):
 
 counter = collections.Counter()
 for idx, sample in enumerate(to_build_vocb_samples):
-    sentenceToCounter(sample.post + " <SEP> " + sample.response, counter)
+    sentenceToCounter(sample.post + " <sep> " + sample.response, counter)
 
 def oovCount(sentence, counter):
     words = sentence.split(" ")
@@ -66,7 +66,7 @@ def oovCount(sentence, counter):
 oov_count = 0
 all_words_count = 0
 for idx, sample in enumerate(to_build_vocb_samples):
-    t = oovCount(sample.post + " <SEP> " + sample.response, counter)
+    t = oovCount(sample.post + " <sep> " + sample.response, counter)
     oov_count += t[0]
     all_words_count += t[1]
 
@@ -96,7 +96,7 @@ def pad_batch(word_ids_arr, lenghs):
     return tensor
 
 def buildDataset(samples, stoi):
-    sentences = [s.post + " <SEP> " + s.response for s in samples]
+    sentences = [s.post + " <sep> " + s.response for s in samples]
     words_arr = [s.split(" ") for s in sentences]
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]

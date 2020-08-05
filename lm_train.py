@@ -88,16 +88,13 @@ def pad_batch(word_ids_arr, lenghs):
     return tensor
 
 def buildDataset(samples, stoi):
-    sentences = [s.post + " <SEP> " + s.response for s in samples]
-    words_arr = [s.split(" ") for s in sentences]
+    words_arr = [s.split(" ") for s in samples]
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
-    labels = [int(s.stance) for s in samples]
 
     sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
-    label_tensor = torch.LongTensor(labels)
 
-    return dataset.Dataset(sentence_tensor, sentence_lens, label_tensor)
+    return dataset.LmDataset(sentence_tensor, sentence_lens)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 

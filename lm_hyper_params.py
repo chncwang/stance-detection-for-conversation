@@ -1,7 +1,7 @@
 seed = 0
 batch_size = 128
 embedding_tuning = False
-min_freq = 100
+min_freq = 1
 word_dim = 300
 hidden_dim = 1024
 dropout = 0.1
