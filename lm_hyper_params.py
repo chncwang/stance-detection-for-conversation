@@ -1,5 +1,5 @@
 seed = 0
-batch_size = 128
+batch_size = 16
 embedding_tuning = False
 min_freq = 1
 word_dim = 300

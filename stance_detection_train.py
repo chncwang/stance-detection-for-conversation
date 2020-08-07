@@ -83,7 +83,7 @@ vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
 vocab.load_vectors(word_vectors)
 embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
-        freeze = hyper_params.embedding_tuning)
+        freeze = hyper_params.embedding_tuning).to(device = configs.device)
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
@@ -121,6 +121,9 @@ model = classifier_module.LSTMClassifier(embedding_table).to(
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
+if PAD_ID != 1:
+    logger.error("pad id should be 1, but is %d", PAD_ID)
+    sys.exit(1)
 
 CPU_DEVICE = torch.device("cpu")
 

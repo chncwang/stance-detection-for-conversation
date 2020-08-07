@@ -14,8 +14,11 @@ import log_config
 import os
 import utils
 import imp
+import lm_module
 
 logger = utils.getLogger(__file__)
+
+logger.info("torch version:%s", torch.__version__)
 
 hyper_params = imp.load_source("module.name", sys.argv[1])
 
@@ -27,11 +30,14 @@ posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts-bpe")
 responses = dataset.readConversationSentences(
         "/var/wqs/weibo_dialogue/responses-bpe")
 
-def readSentences(path):
-    return dataset.readLmSentences(path, posts, responses)
+def readSentences(path, rate = 1.0):
+    logger.info("rate:%f", rate)
+    return dataset.readLmSentences(path, posts, responses, rate = rate)
 
-training_samples = readSentences("/var/wqs/stance-lm/train")
+training_samples = readSentences("/var/wqs/stance-lm/train", rate = 0.01)
+logger.info("traning samples count:%d", len(training_samples))
 dev_samples = readSentences("/var/wqs/stance-lm/dev")
+logger.info("dev samples count:%d", len(dev_samples))
 
 to_build_vocb_samples = None
 if hyper_params.embedding_tuning:
@@ -44,6 +50,7 @@ def sentenceToCounter(sentence, counter):
     return counter.update(words)
 
 counter = collections.Counter()
+logger.info("building vocabulary...")
 for idx, sample in enumerate(to_build_vocb_samples):
     sentenceToCounter(sample, counter)
 
@@ -75,7 +82,7 @@ vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
 vocab.load_vectors(word_vectors)
 embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
-        freeze = hyper_params.embedding_tuning)
+        freeze = hyper_params.embedding_tuning).to(device = configs.device)
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
@@ -89,12 +96,15 @@ def pad_batch(word_ids_arr, lenghs):
 
 def buildDataset(samples, stoi):
     words_arr = [s.split(" ") for s in samples]
-    sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
-    sentence_lens = [len(s) for s in words_arr]
+    src_sentences_indexes_arr = [word_indexes(s[:-1], stoi) for s in words_arr]
+    tgt_sentences_indexes_arr = [word_indexes(s[1:], stoi) for s in words_arr]
+    sentence_lens = [len(s) - 1 for s in words_arr]
 
-    sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
+    src_sentence_tensor = pad_batch(src_sentences_indexes_arr, sentence_lens)
+    tgt_sentence_tensor = pad_batch(tgt_sentences_indexes_arr, sentence_lens)
 
-    return dataset.LmDataset(sentence_tensor, sentence_lens)
+    return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
+            sentence_lens)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 
@@ -104,10 +114,14 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
-model = model.LSTMClassifier(embedding_table).to(device = configs.device)
+model = lm_module.LstmLm(embedding_table, len(vocab)).to(
+        device = configs.device)
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
+if PAD_ID != 1:
+    logger.error("PAD_ID is %d", PAD_ID)
+    sys.exit(1)
 
 CPU_DEVICE = torch.device("cpu")
 
@@ -141,28 +155,41 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
-    for sentence_tensor, sentence_lens, label_tensor in training_generator:
+    for src_tensor, tgt_tensor, lens in training_generator:
         batch_i += 1
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
         if should_print:
-            words = [vocab.itos[x] for x in sentence_tensor[0] if x != PAD_ID]
+            words = [vocab.itos[x] for x in src_tensor[0] if x != PAD_ID]
             logger.info("sentence:%s", " ".join(words))
 
         model.zero_grad()
-        sentence_tensor = sentence_tensor.to(device = configs.device)
-        predicted = model(sentence_tensor, sentence_lens)
-        label_tensor = label_tensor.to(device = configs.device)
-        loss = nn.CrossEntropyLoss()(predicted, label_tensor)
+        src_tensor = src_tensor.to(device = configs.device)
+        predicted = model(src_tensor, lens)
+        max_len_in_batch = predicted.size()[2]
+        tgt_tensor = tgt_tensor.to(device = configs.device)
+        logger.debug("predicted size:%s tgt_tensor:%s", predicted.size(),
+                tgt_tensor.size())
+        logger.debug("tgt_tensor size:%s", tgt_tensor.size())
+        tgt_tensor = torch.split(tgt_tensor,
+                [max_len_in_batch, tgt_tensor.size()[1] - max_len_in_batch],
+                1)[0]
+        logger.debug("tgt_tensor size:%s", tgt_tensor.size())
+        loss = nn.NLLLoss()(predicted, tgt_tensor)
         loss.backward()
         if hyper_params.clip_grad is not None:
             nn.utils.clip_grad_norm_(model.parameters(),
                     hyper_params.clip_grad)
         optimizer.step()
         predicted_idx = torch.max(predicted, 1)[1]
-        predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
-                int())
-        ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
+        predicted_idx = predicted_idx.to(device = CPU_DEVICE).tolist()
+        for x in predicted_idx:
+            predicted_idxes += x
+        logger.debug("predicted_idxes:%s", predicted_idxes)
+        ground_truth = tgt_tensor.to(device = CPU_DEVICE).tolist()
+        for x in ground_truth:
+            ground_truths += x
+        logger.debug("ground_truths:%s", ground_truths)
         loss_sum += loss
         if should_print:
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
