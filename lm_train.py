@@ -166,16 +166,24 @@ for epoch_i in itertools.count(0):
         model.zero_grad()
         src_tensor = src_tensor.to(device = configs.device)
         predicted = model(src_tensor, lens)
-        max_len_in_batch = predicted.size()[2]
+        logger.debug("predicted size:%s", predicted.size())
         tgt_tensor = tgt_tensor.to(device = configs.device)
-        logger.debug("predicted size:%s tgt_tensor:%s", predicted.size(),
-                tgt_tensor.size())
         logger.debug("tgt_tensor size:%s", tgt_tensor.size())
-        tgt_tensor = torch.split(tgt_tensor,
-                [max_len_in_batch, tgt_tensor.size()[1] - max_len_in_batch],
-                1)[0]
-        logger.debug("tgt_tensor size:%s", tgt_tensor.size())
-        loss = nn.NLLLoss()(predicted, tgt_tensor)
+        ids_list = []
+        for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
+            sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
+            logger.debug("sentence_ids size:%s", sentence_ids.size())
+            length = lens[i]
+            logger.debug("length:%d", length)
+            non_padded = torch.split(sentence_ids,
+                    [length, tgt_tensor.size()[1] - length], 0)[0]
+            logger.debug("non_padded size:%s", non_padded.size())
+            ids_list.append(non_padded)
+        ids_tuple = tuple(ids_list)
+        concated = torch.cat(ids_tuple)
+        logger.debug("concated size:%s predicted size:%s", concated.size(),
+                predicted.size())
+        loss = nn.NLLLoss()(predicted, concated)
         loss.backward()
         if hyper_params.clip_grad is not None:
             nn.utils.clip_grad_norm_(model.parameters(),
@@ -183,13 +191,12 @@ for epoch_i in itertools.count(0):
         optimizer.step()
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idx = predicted_idx.to(device = CPU_DEVICE).tolist()
-        for x in predicted_idx:
-            predicted_idxes += x
+        logger.debug("predicted_idx len:%d", len(predicted_idx))
+        predicted_idxes += predicted_idx
         logger.debug("predicted_idxes:%s", predicted_idxes)
-        ground_truth = tgt_tensor.to(device = CPU_DEVICE).tolist()
-        for x in ground_truth:
-            ground_truths += x
-        logger.debug("ground_truths:%s", ground_truths)
+        ground_truth = concated.to(device = CPU_DEVICE).tolist()
+        ground_truths += ground_truth
+        logger.debug("ground_truths len:%d", len(ground_truths))
         loss_sum += loss
         if should_print:
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
