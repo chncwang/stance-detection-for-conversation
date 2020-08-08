@@ -1,4 +1,5 @@
 import datetime
+import math
 import sys
 import torch
 import torchtext
@@ -170,11 +171,14 @@ for epoch_i in itertools.count(0):
         tgt_tensor = tgt_tensor.to(device = configs.device)
         logger.debug("tgt_tensor size:%s", tgt_tensor.size())
         ids_list = []
+        first_len = 0
         for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
             sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
             logger.debug("sentence_ids size:%s", sentence_ids.size())
             length = lens[i]
             logger.debug("length:%d", length)
+            if i == 0:
+                first_len = length
             non_padded = torch.split(sentence_ids,
                     [length, tgt_tensor.size()[1] - length], 0)[0]
             logger.debug("non_padded size:%s", non_padded.size())
@@ -191,16 +195,21 @@ for epoch_i in itertools.count(0):
         optimizer.step()
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idx = predicted_idx.to(device = CPU_DEVICE).tolist()
+        if should_print:
+            words = [vocab.itos[x] for x in predicted_idx[: first_len]]
+            logger.info("predicted:%s", " ".join(words))
         logger.debug("predicted_idx len:%d", len(predicted_idx))
         predicted_idxes += predicted_idx
         logger.debug("predicted_idxes:%s", predicted_idxes)
         ground_truth = concated.to(device = CPU_DEVICE).tolist()
         ground_truths += ground_truth
         logger.debug("ground_truths len:%d", len(ground_truths))
-        loss_sum += loss
+        token_count_in_batch = len(ground_truth)
+        loss_sum += loss * token_count_in_batch
         if should_print:
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-            logger.info("acc:%f correct:%d total:%d", acc,
+            ppl = math.exp(loss_sum / len(ground_truths))
+            logger.info("ppl:%f acc:%f correct:%d total:%d", ppl, acc,
                     acc * len(ground_truths), len(ground_truths))
 
     acc = metrics.accuracy_score(ground_truths, predicted_idxes)
