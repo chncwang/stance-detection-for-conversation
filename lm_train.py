@@ -35,7 +35,7 @@ def readSentences(path, rate = 1.0):
     logger.info("rate:%f", rate)
     return dataset.readLmSentences(path, posts, responses, rate = rate)
 
-training_samples = readSentences("/var/wqs/stance-lm/train", rate = 0.01)
+training_samples = readSentences("/var/wqs/stance-lm/train", rate = 0.001)
 logger.info("traning samples count:%d", len(training_samples))
 dev_samples = readSentences("/var/wqs/stance-lm/dev")
 logger.info("dev samples count:%d", len(dev_samples))
@@ -127,26 +127,42 @@ if PAD_ID != 1:
 CPU_DEVICE = torch.device("cpu")
 
 def evaluate(model, samples):
+    model.eval()
     evaluation_set = buildDataset(samples, vocab.stoi)
     evaluation_loader_params = {
             "batch_size": configs.evaluation_batch_size,
             "shuffle": False }
     evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
         **evaluation_loader_params)
-    predicted_idxes = []
-    ground_truths = []
-    for sentence_tensor, sentence_lens, label_tensor in evaluation_generator:
-        sentence_tensor = sentence_tensor.to(device = configs.device)
-        predicted = model(sentence_tensor, sentence_lens)
-        predicted_idx = torch.max(predicted, 1)[1]
-        predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
-                int())
-        ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
-    return metrics.f1_score(ground_truths, predicted_idxes, average = None)
+    loss_sum = 0
+    dataset_len_sum = 0
+    for src_tensor, tgt_tensor, lens in evaluation_generator:
+        src_tensor = src_tensor.to(device = configs.device)
+        logger.debug("src_tensor size:%s tgt_tensor size:%s",
+                src_tensor.size(), tgt_tensor.size())
+        logger.debug("lens:%s", lens)
+        predicted = model(src_tensor, lens)
+        ids_list = []
+        len_sum = 0
+        tgt_tensor = tgt_tensor.to(device = configs.device)
+        for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
+            sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
+            length = lens[i]
+            len_sum += length
+            non_padded = torch.split(sentence_ids,
+                    [length, tgt_tensor.size()[1] - length], 0)[0]
+            ids_list.append(non_padded)
+        ids_tuple = tuple(ids_list)
+        concated = torch.cat(ids_tuple)
+        loss = nn.NLLLoss()(predicted, concated)
+        loss_sum += loss * len_sum
+        dataset_len_sum += len_sum
+    model.train()
+    return math.exp(loss_sum / dataset_len_sum)
 
 stagnation_epochs = 0
 best_epoch_i = 0
-best_dev_macro, best_test_macro = 0.0, 0.0
+best_dev_ppl = 1e100
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 10:
         break
@@ -200,7 +216,6 @@ for epoch_i in itertools.count(0):
             logger.info("predicted:%s", " ".join(words))
         logger.debug("predicted_idx len:%d", len(predicted_idx))
         predicted_idxes += predicted_idx
-        logger.debug("predicted_idxes:%s", predicted_idxes)
         ground_truth = concated.to(device = CPU_DEVICE).tolist()
         ground_truths += ground_truth
         logger.debug("ground_truths len:%d", len(ground_truths))
@@ -216,26 +231,16 @@ for epoch_i in itertools.count(0):
     logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
             len(ground_truths))
     logger.info("evaluating dev set...")
-    dev_score = evaluate(model, dev_samples)
-    logger.info("dev:%s", dev_score)
-    dev_macro = 0.5 * (dev_score[0] + dev_score[1])
-    logger.info("dev macro:%f", dev_macro)
+    dev_ppl = evaluate(model, dev_samples)
+    logger.info("dev ppl:%s", dev_ppl)
 
-    logger.info("evaluating test set...")
-    test_score = evaluate(model, test_samples)
-    logger.info("test:%s", test_score)
-    test_macro = 0.5 * (test_score[0] + test_score[1])
-    logger.info("test macro:%f", test_macro)
-
-    if dev_macro > best_dev_macro:
+    if dev_ppl < best_dev_ppl:
         best_epoch_i = epoch_i
-        best_dev_macro = dev_macro
-        best_test_macro = test_macro
+        best_dev_ppl = dev_ppl
         logger.info("new best results")
-        logger.info("laozhongyi_%f", best_dev_macro)
+        logger.info("laozhongyi_%f", best_dev_ppl)
         stagnation_epochs = 0
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
-    logger.info("best epoch:%d dev_macro:%f test_macro:%f", best_epoch_i,
-            best_dev_macro, best_test_macro)
+    logger.info("best epoch:%d dev_ppl:%f", best_epoch_i, best_dev_ppl)
