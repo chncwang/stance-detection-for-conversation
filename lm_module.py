@@ -28,15 +28,17 @@ class LstmLm(nn.Module):
                 bias = False)
         embedding_to_word_id.weight = embedding.weight
         self.embedding_to_word_id = embedding_to_word_id
+        self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
+        self.log_softmax = nn.LogSoftmax(1)
 
     def forward(self, src_sentence_tensor, sentence_lens):
         word_vectors = self.embedding(src_sentence_tensor)
-        nn.Dropout(p = hyper_params.dropout, inplace = True)(word_vectors)
+        self.dropout(word_vectors)
         packed_tensor = rnn.pack_padded_sequence(word_vectors, sentence_lens,
                 batch_first = True, enforce_sorted = False)
         hiddens = self.lstm(packed_tensor, self.initial_hiddens)[0]
         hiddens = rnn.pad_packed_sequence(hiddens, batch_first = True)[0]
-        nn.Dropout(p = hyper_params.dropout, inplace = True)(hiddens)
+        self.dropout(hiddens)
         logger.debug("hiddens size:%s", hiddens.size())
         embeddings = self.hidden_to_embedding(hiddens)
         word_ids = self.embedding_to_word_id(embeddings)
@@ -56,4 +58,4 @@ class LstmLm(nn.Module):
         to_cat_tuple = tuple(to_cat_list)
         concated = torch.cat(to_cat_tuple, 0)
         logger.debug("concated size:%s", concated.size())
-        return nn.LogSoftmax(1)(concated)
+        return self.log_softmax(concated)

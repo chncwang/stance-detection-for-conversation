@@ -128,36 +128,37 @@ CPU_DEVICE = torch.device("cpu")
 
 def evaluate(model, samples):
     model.eval()
-    evaluation_set = buildDataset(samples, vocab.stoi)
-    evaluation_loader_params = {
-            "batch_size": configs.evaluation_batch_size,
-            "shuffle": False }
-    evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
-        **evaluation_loader_params)
-    loss_sum = 0
-    dataset_len_sum = 0
-    for src_tensor, tgt_tensor, lens in evaluation_generator:
-        src_tensor = src_tensor.to(device = configs.device)
-        logger.debug("src_tensor size:%s tgt_tensor size:%s",
-                src_tensor.size(), tgt_tensor.size())
-        logger.debug("lens:%s", lens)
-        predicted = model(src_tensor, lens)
-        ids_list = []
-        len_sum = 0
-        tgt_tensor = tgt_tensor.to(device = configs.device)
-        for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
-            sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
-            length = lens[i]
-            len_sum += length
-            non_padded = torch.split(sentence_ids,
-                    [length, tgt_tensor.size()[1] - length], 0)[0]
-            ids_list.append(non_padded)
-        ids_tuple = tuple(ids_list)
-        concated = torch.cat(ids_tuple)
-        loss = nn.NLLLoss()(predicted, concated)
-        loss_sum += loss * len_sum
-        dataset_len_sum += len_sum
-    model.train()
+    with torch.no_grad():
+        evaluation_set = buildDataset(samples, vocab.stoi)
+        evaluation_loader_params = {
+                "batch_size": configs.evaluation_batch_size,
+                "shuffle": False }
+        evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
+            **evaluation_loader_params)
+        loss_sum = 0
+        dataset_len_sum = 0
+        for src_tensor, tgt_tensor, lens in evaluation_generator:
+            src_tensor = src_tensor.to(device = configs.device)
+            logger.debug("src_tensor size:%s tgt_tensor size:%s",
+                    src_tensor.size(), tgt_tensor.size())
+            logger.debug("lens:%s", lens)
+            predicted = model(src_tensor, lens)
+            ids_list = []
+            len_sum = 0
+            tgt_tensor = tgt_tensor.to(device = configs.device)
+            for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
+                sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
+                length = lens[i]
+                len_sum += length
+                non_padded = torch.split(sentence_ids,
+                        [length, tgt_tensor.size()[1] - length], 0)[0]
+                ids_list.append(non_padded)
+            ids_tuple = tuple(ids_list)
+            concated = torch.cat(ids_tuple)
+            loss = nn.NLLLoss()(predicted, concated)
+            loss_sum += loss * len_sum
+            dataset_len_sum += len_sum
+        model.train()
     return math.exp(loss_sum / dataset_len_sum)
 
 stagnation_epochs = 0

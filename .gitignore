@@ -131,3 +131,4 @@ dmypy.json
 *.swp
 log_config.py
 .vector_cache/
+tags
