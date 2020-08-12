@@ -129,6 +129,5 @@ dmypy.json
 .pyre/
 
 *.swp
-log_config.py
 .vector_cache/
 tags
