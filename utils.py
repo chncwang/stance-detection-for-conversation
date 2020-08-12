@@ -1,6 +1,7 @@
 import logging
 import utils
 import os
+import configs
 
 def getLogger(filename):
     self_module = os.path.basename(filename[:-3])
@@ -30,6 +31,14 @@ def printLmHyperParams(hyper_params):
     logger.info("hidden_dim:%d", hyper_params.hidden_dim)
     logger.info("dropout:%f", hyper_params.dropout)
     logger.info("learning_rate:%f", hyper_params.learning_rate)
+    logger.info("min_learning_rate:%f", hyper_params.min_learning_rate)
+    logger.info("lr_decay:%f", hyper_params.lr_decay)
     logger.info("weight_decay:%f", hyper_params.weight_decay)
     logger.info("clip_grad:%f", hyper_params.clip_grad)
     logger.info("layer:%d", hyper_params.layer)
+
+def printConfigs():
+    logger.info("device:%s", configs.device)
+    logger.info("evaluation_batch_size:%d", configs.evaluation_batch_size)
+    logger.info("lm_left_to_right:%r", configs.lm_left_to_right)
+    logger.info("lm_training_set_rate:%f", configs.lm_training_set_rate)

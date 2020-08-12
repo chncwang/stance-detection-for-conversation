@@ -16,6 +16,7 @@ import os
 import utils
 import imp
 import lm_module
+import pickle
 
 logger = utils.getLogger(__file__)
 
@@ -24,6 +25,7 @@ logger.info("torch version:%s", torch.__version__)
 hyper_params = imp.load_source("module.name", sys.argv[1])
 
 utils.printLmHyperParams(hyper_params)
+utils.printConfigs()
 
 torch.manual_seed(hyper_params.seed)
 
@@ -35,7 +37,8 @@ def readSentences(path, rate = 1.0):
     logger.info("rate:%f", rate)
     return dataset.readLmSentences(path, posts, responses, rate = rate)
 
-training_samples = readSentences("/var/wqs/stance-lm/train", rate = 0.001)
+training_samples = readSentences("/var/wqs/stance-lm/train",
+        rate = configs.lm_training_set_rate)
 logger.info("traning samples count:%d", len(training_samples))
 dev_samples = readSentences("/var/wqs/stance-lm/dev")
 logger.info("dev samples count:%d", len(dev_samples))
@@ -79,11 +82,13 @@ if not hyper_params.embedding_tuning:
         if counter[k] < hyper_params.min_freq and k in word_vectors.stoi:
             counter[k] = 10000
 
-vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
-logger.info("vocab len:%d", len(vocab))
-vocab.load_vectors(word_vectors)
-embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
-        freeze = hyper_params.embedding_tuning).to(device = configs.device)
+vocab, embedding_table = None, None
+if configs.model_file is None:
+    vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
+    logger.info("vocab len:%d", len(vocab))
+    vocab.load_vectors(word_vectors)
+    embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
+            freeze = hyper_params.embedding_tuning).to(device = configs.device)
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
@@ -107,6 +112,48 @@ def buildDataset(samples, stoi):
     return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
             sentence_lens)
 
+def saveCheckPoint(model, optimizer, vocab, learning_rate, epoch):
+    state = {"model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "learning_rate": learning_rate,
+            "vocab": vocab}
+    path = "model-" + str(epoch) + "-" + datetime.datetime.now().strftime(
+            "%Y-%m-%d-%H-%M")
+    logger.info("path:%s", path)
+    logger.info("saving model...")
+    torch.save(state, path)
+
+#     with open(path + "-vocab", "wb") as output:
+#         pickle.dump(vocab, output)
+
+def loadCheckPoint(path):
+#     with open(path + "-vocab", "rb") as _input:
+#         vocab = pickle.load(_input)
+
+    state = torch.load(path)
+    vocab = state["vocab"]
+    embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
+    model = lm_module.LstmLm(embedding_table, len(vocab)).to(
+            device = configs.device)
+    optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
+            weight_decay = hyper_params.weight_decay)
+    model.load_state_dict(state["model"])
+    optimizer.load_state_dict(state["optimizer"])
+    learning_rate = state["learning_rate"]
+
+    return model, optimizer, vocab, learning_rate
+
+model, optimizer, learning_rate = None, None, None
+if configs.model_file is None:
+    model = lm_module.LstmLm(embedding_table, len(vocab)).to(
+            device = configs.device)
+    learning_rate = hyper_params.learning_rate
+    optimizer = optim.Adam(model.parameters(), lr = learning_rate,
+            weight_decay = hyper_params.weight_decay)
+else:
+    logger.info("loading %s...", configs.model_file)
+    model, optimizer, vocab, learning_rate = loadCheckPoint(configs.model_file)
+
 training_set = buildDataset(training_samples, vocab.stoi)
 
 data_loader_params = {
@@ -115,10 +162,6 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
-model = lm_module.LstmLm(embedding_table, len(vocab)).to(
-        device = configs.device)
-optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
-        weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
 if PAD_ID != 1:
     logger.error("PAD_ID is %d", PAD_ID)
@@ -165,7 +208,7 @@ stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_ppl = 1e100
 for epoch_i in itertools.count(0):
-    if stagnation_epochs >= 10:
+    if stagnation_epochs >= 2:
         break
     batch_i = -1
     predicted_idxes = []
@@ -173,11 +216,13 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
+    logger.info("learning_rate:%f", learning_rate)
     for src_tensor, tgt_tensor, lens in training_generator:
         batch_i += 1
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
         if should_print:
+            logger.info("batch_i:%d", batch_i)
             words = [vocab.itos[x] for x in src_tensor[0] if x != PAD_ID]
             logger.info("sentence:%s", " ".join(words))
 
@@ -241,7 +286,14 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", best_dev_ppl)
         stagnation_epochs = 0
+        saveCheckPoint(model, optimizer, vocab, learning_rate, epoch_i)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
     logger.info("best epoch:%d dev_ppl:%f", best_epoch_i, best_dev_ppl)
+
+    learning_rate = (learning_rate - hyper_params.min_learning_rate) *\
+            hyper_params.lr_decay
+    logger.info("new learning rate:%f", learning_rate)
+    for g in optimizer.param_groups:
+        g["lr"] = learning_rate

@@ -48,7 +48,8 @@ class LstmLm(nn.Module):
         len_sum = sum(len_list)
         len_max = max(len_list)
         to_cat_list = []
-        for idx, (vector, length) in enumerate(zip(torch.split(word_ids, 1), sentence_lens.tolist())):
+        for idx, (vector, length) in enumerate(zip(torch.split(word_ids, 1),
+                sentence_lens.tolist())):
             logger.debug("idx:%d", idx)
             vector = vector.reshape(vector.size()[1], vector.size()[2])
             logger.debug("vector size:%s", vector.size())
