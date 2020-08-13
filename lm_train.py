@@ -296,7 +296,7 @@ for epoch_i in itertools.count(0):
     logger.info("best epoch:%d dev_ppl:%f", best_epoch_i, best_dev_ppl)
 
     learning_rate = (learning_rate - hyper_params.min_learning_rate) *\
-            hyper_params.lr_decay
+            hyper_params.lr_decay + hyper_params.min_learning_rate
     logger.info("new learning rate:%f", learning_rate)
     for g in optimizer.param_groups:
         g["lr"] = learning_rate
