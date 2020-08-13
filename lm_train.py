@@ -102,6 +102,9 @@ def pad_batch(word_ids_arr, lenghs):
 
 def buildDataset(samples, stoi):
     words_arr = [s.split(" ") for s in samples]
+    if not configs.lm_left_to_right:
+        for words in words_arr:
+            words.reverse()
     src_sentences_indexes_arr = [word_indexes(s[:-1], stoi) for s in words_arr]
     tgt_sentences_indexes_arr = [word_indexes(s[1:], stoi) for s in words_arr]
     sentence_lens = [len(s) - 1 for s in words_arr]
