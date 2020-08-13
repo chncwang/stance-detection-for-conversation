@@ -214,12 +214,12 @@ for epoch_i in itertools.count(0):
     if stagnation_epochs >= 2:
         break
     batch_i = -1
-    predicted_idxes = []
-    ground_truths = []
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
     logger.info("learning_rate:%f", learning_rate)
+    total_token_count = 0
+    total_hit_count = 0
     for src_tensor, tgt_tensor, lens in training_generator:
         batch_i += 1
 
@@ -264,21 +264,18 @@ for epoch_i in itertools.count(0):
             words = [vocab.itos[x] for x in predicted_idx[: first_len]]
             logger.info("predicted:%s", " ".join(words))
         logger.debug("predicted_idx len:%d", len(predicted_idx))
-        predicted_idxes += predicted_idx
         ground_truth = concated.to(device = CPU_DEVICE).tolist()
-        ground_truths += ground_truth
-        logger.debug("ground_truths len:%d", len(ground_truths))
+        logger.debug("ground_truth len:%d", len(ground_truth))
         token_count_in_batch = len(ground_truth)
+        total_token_count += token_count_in_batch
         loss_sum += loss * token_count_in_batch
+        acc = metrics.accuracy_score(ground_truth, predicted_idx)
+        total_hit_count += acc * token_count_in_batch
         if should_print:
-            acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-            ppl = math.exp(loss_sum / len(ground_truths))
+            ppl = math.exp(loss_sum / total_token_count)
             logger.info("ppl:%f acc:%f correct:%d total:%d", ppl, acc,
-                    acc * len(ground_truths), len(ground_truths))
+                    total_hit_count, total_token_count)
 
-    acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-    logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
-            len(ground_truths))
     logger.info("evaluating dev set...")
     dev_ppl = evaluate(model, dev_samples)
     logger.info("dev ppl:%s", dev_ppl)
