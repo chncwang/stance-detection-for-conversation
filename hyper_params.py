@@ -9,4 +9,4 @@ learning_rate = 3e-4
 weight_decay = 1e-5
 clip_grad = 1e1
 layer = 4
-warm_up_steps = 1000
+warm_up_steps = 4000

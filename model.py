@@ -80,6 +80,7 @@ class TransformerClassifier(nn.Module):
             transformer):
         word_vectors = self.embedding(sentence).to(device = configs.device)
         word_vectors = self.input_linear(word_vectors)
+        word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
         word_vectors = self.postional_encoding(word_vectors)
         hiddens = self.forwardSentenceToTransformer(word_vectors, lens,
                 src_key_padding_mask, transformer)
