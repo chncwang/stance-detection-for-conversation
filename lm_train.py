@@ -126,26 +126,6 @@ def saveCheckPoint(model, optimizer, vocab, learning_rate, epoch):
     logger.info("saving model...")
     torch.save(state, path)
 
-#     with open(path + "-vocab", "wb") as output:
-#         pickle.dump(vocab, output)
-
-def loadCheckPoint(path):
-#     with open(path + "-vocab", "rb") as _input:
-#         vocab = pickle.load(_input)
-
-    state = torch.load(path)
-    vocab = state["vocab"]
-    embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
-    model = lm_module.LstmLm(embedding_table, len(vocab)).to(
-            device = configs.device)
-    optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
-            weight_decay = hyper_params.weight_decay)
-    model.load_state_dict(state["model"])
-    optimizer.load_state_dict(state["optimizer"])
-    learning_rate = state["learning_rate"]
-
-    return model, optimizer, vocab, learning_rate
-
 model, optimizer, learning_rate = None, None, None
 if configs.model_file is None:
     model = lm_module.LstmLm(embedding_table, len(vocab)).to(
@@ -155,7 +135,8 @@ if configs.model_file is None:
             weight_decay = hyper_params.weight_decay)
 else:
     logger.info("loading %s...", configs.model_file)
-    model, optimizer, vocab, learning_rate = loadCheckPoint(configs.model_file)
+    model, optimizer, vocab, learning_rate = utils.loadLmCheckPoint(
+            configs.model_file)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 

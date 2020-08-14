@@ -15,6 +15,8 @@ import log_config
 import os
 import utils
 import imp
+import logging
+import log_config
 
 logger = utils.getLogger(__file__)
 
@@ -118,6 +120,8 @@ training_generator = torch.utils.data.DataLoader(training_set,
 
 model = classifier_module.LSTMClassifier(embedding_table).to(
         device = configs.device)
+logger.debug("model params:%s", list(model.parameters()))
+
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]

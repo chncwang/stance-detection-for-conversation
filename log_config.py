@@ -9,8 +9,8 @@ logging.basicConfig(format = FORMAT,
 #         filename = LOG_FILENAME,
         level = logging.INFO)
 
-# getLogger("train").setLevel(DEBUG)
-# getLogger("model").setLevel(DEBUG)
+getLogger("stance_detection_train").setLevel(DEBUG)
+getLogger("classifier_module").setLevel(DEBUG)
 # getLogger("dataset").setLevel(DEBUG)
 # getLogger("lm_train").setLevel(DEBUG)
 # getLogger("lm_module").setLevel(DEBUG)
