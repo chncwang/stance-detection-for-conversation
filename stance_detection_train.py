@@ -128,21 +128,25 @@ if PAD_ID != 1:
 CPU_DEVICE = torch.device("cpu")
 
 def evaluate(model, samples):
-    evaluation_set = buildDataset(samples, vocab.stoi)
-    evaluation_loader_params = {
-            "batch_size": configs.evaluation_batch_size,
-            "shuffle": False }
-    evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
-        **evaluation_loader_params)
-    predicted_idxes = []
-    ground_truths = []
-    for sentence_tensor, sentence_lens, label_tensor in evaluation_generator:
-        sentence_tensor = sentence_tensor.to(device = configs.device)
-        predicted = model(sentence_tensor, sentence_lens)
-        predicted_idx = torch.max(predicted, 1)[1]
-        predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
-                int())
-        ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
+    model.eval()
+    with torch.no_grad():
+        evaluation_set = buildDataset(samples, vocab.stoi)
+        evaluation_loader_params = {
+                "batch_size": configs.evaluation_batch_size,
+                "shuffle": False }
+        evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
+            **evaluation_loader_params)
+        predicted_idxes = []
+        ground_truths = []
+        for sentence_tensor, sentence_lens, label_tensor in\
+                evaluation_generator:
+            sentence_tensor = sentence_tensor.to(device = configs.device)
+            predicted = model(sentence_tensor, sentence_lens)
+            predicted_idx = torch.max(predicted, 1)[1]
+            predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
+                    int())
+            ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
+    model.train()
     return metrics.f1_score(ground_truths, predicted_idxes, average = None)
 
 stagnation_epochs = 0
