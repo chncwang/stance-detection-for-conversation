@@ -56,7 +56,7 @@ def sentenceToCounter(sentence, counter):
 
 counter = collections.Counter()
 for idx, sample in enumerate(to_build_vocb_samples):
-    sentenceToCounter(sample.post + " <sep> " + sample.response, counter)
+    sentenceToCounter("<begin> " + sample.post + " <sep> " + sample.response, counter)
 
 def oovCount(sentence, counter):
     words = sentence.split(" ")
@@ -69,7 +69,7 @@ def oovCount(sentence, counter):
 oov_count = 0
 all_words_count = 0
 for idx, sample in enumerate(to_build_vocb_samples):
-    t = oovCount(sample.post + " <sep> " + sample.response, counter)
+    t = oovCount("<begin> " + sample.post + " <sep> " + sample.response, counter)
     oov_count += t[0]
     all_words_count += t[1]
 
@@ -82,11 +82,13 @@ if not hyper_params.embedding_tuning:
         if counter[k] < hyper_params.min_freq and k in word_vectors.stoi:
             counter[k] = 10000
 
-# pretrained_model, _, vocab, _ = lm_utils.loadLmCheckPoint(
-#         "/var/wqs/pretrained/lstm/left-to-right", hyper_params)
-vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
+logger.info("pretrained_model loading...")
+pretrained_model, _, vocab, _ = lm_utils.loadLmCheckPoint(
+        "/var/wqs/pretrained/models-2/left-to-right", hyper_params)
+logger.info("pretrained_model loaded")
+# vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
-vocab.load_vectors(word_vectors)
+# vocab.load_vectors(word_vectors)
 embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
         freeze = hyper_params.embedding_tuning).to(device = configs.device)
 
@@ -101,7 +103,7 @@ def pad_batch(word_ids_arr, lenghs):
     return tensor
 
 def buildDataset(samples, stoi):
-    sentences = [s.post + " <sep> " + s.response for s in samples]
+    sentences = ["<begin> " + s.post + " <sep> " + s.response for s in samples]
     words_arr = [s.split(" ") for s in sentences]
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
@@ -123,7 +125,8 @@ training_generator = torch.utils.data.DataLoader(training_set,
 
 model = classifier_module.LSTMClassifier(embedding_table).to(
         device = configs.device)
-# model.left_to_right_lstm = pretrained_model.lstm
+model.left_to_right_lstm = pretrained_model.lstm
+model.embedding = pretrained_model.embedding
 logger.debug("model params:%s", list(model.parameters()))
 
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
@@ -203,7 +206,7 @@ for epoch_i in itertools.count(0):
     logger.info("evaluating dev set...")
     dev_score = evaluate(model, dev_samples)
     logger.info("dev:%s", dev_score)
-    dev_macro = 0.5 * (dev_score[0] + dev_score[1])
+    dev_macro = sum(dev_score[:2]) / 2.0
     logger.info("dev macro:%f", dev_macro)
 
     logger.info("evaluating test set...")
