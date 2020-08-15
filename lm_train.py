@@ -235,6 +235,7 @@ for epoch_i in itertools.count(0):
                 predicted.size())
         loss = nn.NLLLoss()(predicted, concated)
         loss.backward()
+#         square_loss = torch.sum(model.hidden_to_embedding.
         if hyper_params.clip_grad is not None:
             nn.utils.clip_grad_norm_(model.parameters(),
                     hyper_params.clip_grad)

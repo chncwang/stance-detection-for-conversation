@@ -2,6 +2,8 @@ import logging
 import utils
 import os
 import configs
+import torch
+import torch.nn as nn
 
 def getLogger(filename):
     self_module = os.path.basename(filename[:-3])
@@ -42,17 +44,3 @@ def printConfigs():
     logger.info("evaluation_batch_size:%d", configs.evaluation_batch_size)
     logger.info("lm_left_to_right:%r", configs.lm_left_to_right)
     logger.info("lm_training_set_rate:%f", configs.lm_training_set_rate)
-
-def loadLmCheckPoint(path):
-    state = torch.load(path)
-    vocab = state["vocab"]
-    embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
-    model = lm_module.LstmLm(embedding_table, len(vocab)).to(
-            device = configs.device)
-    optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
-            weight_decay = hyper_params.weight_decay)
-    model.load_state_dict(state["model"])
-    optimizer.load_state_dict(state["optimizer"])
-    learning_rate = state["learning_rate"]
-
-    return model, optimizer, vocab, learning_rate

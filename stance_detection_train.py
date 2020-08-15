@@ -17,6 +17,7 @@ import utils
 import imp
 import logging
 import log_config
+import lm_utils
 
 logger = utils.getLogger(__file__)
 
@@ -81,6 +82,8 @@ if not hyper_params.embedding_tuning:
         if counter[k] < hyper_params.min_freq and k in word_vectors.stoi:
             counter[k] = 10000
 
+# pretrained_model, _, vocab, _ = lm_utils.loadLmCheckPoint(
+#         "/var/wqs/pretrained/lstm/left-to-right", hyper_params)
 vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
 vocab.load_vectors(word_vectors)
@@ -120,10 +123,8 @@ training_generator = torch.utils.data.DataLoader(training_set,
 
 model = classifier_module.LSTMClassifier(embedding_table).to(
         device = configs.device)
+# model.left_to_right_lstm = pretrained_model.lstm
 logger.debug("model params:%s", list(model.parameters()))
-
-# pretrained_model = utils.loadLmCheckPoint(
-#         "/var/wqs/pretrained/lstm/left-to-right")
 
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
         weight_decay = hyper_params.weight_decay)
