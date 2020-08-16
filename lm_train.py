@@ -88,7 +88,8 @@ if configs.model_file is None:
     logger.info("vocab len:%d", len(vocab))
     vocab.load_vectors(word_vectors)
     embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
-            freeze = hyper_params.embedding_tuning).to(device = configs.device)
+            freeze = not hyper_params.embedding_tuning).to(
+                    device = configs.device)
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]

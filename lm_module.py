@@ -28,7 +28,7 @@ class LstmLm(nn.Module):
                 hyper_params.word_dim)
         embedding_to_word_id = nn.Linear(hyper_params.word_dim, vocab_len,
                 bias = False)
-        embedding_to_word_id.load_state_dict(embedding.state_dict())
+        embedding_to_word_id.weight = embedding.weight
         self.embedding_to_word_id = embedding_to_word_id
         self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
         self.log_softmax = nn.LogSoftmax(1)
