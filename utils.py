@@ -42,5 +42,4 @@ def printLmHyperParams(hyper_params):
 def printConfigs():
     logger.info("device:%s", configs.device)
     logger.info("evaluation_batch_size:%d", configs.evaluation_batch_size)
-    logger.info("lm_left_to_right:%r", configs.lm_left_to_right)
     logger.info("lm_training_set_rate:%f", configs.lm_training_set_rate)
