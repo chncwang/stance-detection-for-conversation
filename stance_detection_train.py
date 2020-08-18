@@ -54,9 +54,12 @@ def sentenceToCounter(sentence, counter):
     words = sentence.split(" ")
     return counter.update(words)
 
+def concatSentence(post, response):
+    return "<begin> " + post + " <sep> " + response + " <end>"
+
 counter = collections.Counter()
 for idx, sample in enumerate(to_build_vocb_samples):
-    sentenceToCounter("<begin> " + sample.post + " <sep> " + sample.response, counter)
+    sentenceToCounter(concatSentence(sample.post, sample.response), counter)
 
 def oovCount(sentence, counter):
     words = sentence.split(" ")
@@ -69,7 +72,7 @@ def oovCount(sentence, counter):
 oov_count = 0
 all_words_count = 0
 for idx, sample in enumerate(to_build_vocb_samples):
-    t = oovCount("<begin> " + sample.post + " <sep> " + sample.response, counter)
+    t = oovCount(concatSentence(sample.post, sample.response), counter)
     oov_count += t[0]
     all_words_count += t[1]
 
@@ -84,7 +87,7 @@ if not hyper_params.embedding_tuning:
 
 logger.info("pretrained_model loading...")
 pretrained_model, _, vocab, _ = lm_utils.loadLmCheckPoint(
-        "/var/wqs/pretrained/models-2/left-to-right", hyper_params)
+        "/var/wqs/pretrained/lstm/model-5-2020-08-17-21-35", hyper_params)
 logger.info("pretrained_model loaded")
 # vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
@@ -96,24 +99,32 @@ def word_indexes(words, stoi):
     return [stoi[word] for word in words]
 
 def pad_batch(word_ids_arr, lenghs):
-    tensor = torch.ones(len(word_ids_arr), max(lenghs), dtype = int)
+    max_len = max(lenghs)
+    tensor = torch.ones(len(word_ids_arr), max_len, dtype = int)
     for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lenghs)):
         x = torch.LongTensor(ids)
-        tensor[idx, :seq_len] = x
+        tensor[idx, : seq_len] = x
+
     return tensor
 
 def buildDataset(samples, stoi):
-    sentences = ["<begin> " + s.post + " <sep> " + s.response for s in samples]
+    sentences = [concatSentence(s.post, s.response)  for s in samples]
     words_arr = [s.split(" ") for s in sentences]
-    sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
+
+    l2r_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
+    l2r_sentence_tensor = pad_batch(l2r_sentences_indexes_arr, sentence_lens)
     labels = [int(s.stance) for s in samples]
 
-    sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
+    for words in words_arr:
+        words.reverse()
+    r2l_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
+    r2l_sentence_tensor = pad_batch(r2l_sentences_indexes_arr, sentence_lens)
+
     label_tensor = torch.LongTensor(labels)
 
-    return dataset.StanceDetectionDataset(sentence_tensor, sentence_lens,
-            label_tensor)
+    return dataset.StanceDetectionDataset(l2r_sentence_tensor,
+            r2l_sentence_tensor, sentence_lens, label_tensor)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 
@@ -172,17 +183,21 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
-    for sentence_tensor, sentence_lens, label_tensor in training_generator:
+    for l2r_sentence_tensor, r2l_sentence_tensor, sentence_lens, label_tensor\
+            in training_generator:
         batch_i += 1
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
         if should_print:
-            words = [vocab.itos[x] for x in sentence_tensor[0] if x != PAD_ID]
+            words = [vocab.itos[x] for x in l2r_sentence_tensor[0]\
+                    if x != PAD_ID]
             logger.info("sentence:%s", " ".join(words))
 
         model.zero_grad()
-        sentence_tensor = sentence_tensor.to(device = configs.device)
-        predicted = model(sentence_tensor, sentence_lens)
+        l2r_sentence_tensor = l2r_sentence_tensor.to(device = configs.device)
+        r2l_sentence_tensor = r2l_sentence_tensor.to(device = configs.device)
+        predicted = model(l2r_sentence_tensor, r2l_sentence_tensor,
+                sentence_lens)
         label_tensor = label_tensor.to(device = configs.device)
         loss = nn.CrossEntropyLoss()(predicted, label_tensor)
         loss.backward()
