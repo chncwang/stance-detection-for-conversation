@@ -86,8 +86,9 @@ if not hyper_params.embedding_tuning:
             counter[k] = 10000
 
 logger.info("pretrained_model loading...")
-pretrained_model, _, vocab, _ = lm_utils.loadLmCheckPoint(
+pretrained_model, stored_opt, vocab, _ = lm_utils.loadLmCheckPoint(
         "/var/wqs/pretrained/lstm/model-5-2020-08-17-21-35", hyper_params)
+del stored_opt
 logger.info("pretrained_model loaded")
 # vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
 logger.info("vocab len:%d", len(vocab))
@@ -139,6 +140,7 @@ model = classifier_module.LSTMClassifier(embedding_table).to(
 model.l2r_lstm = pretrained_model.l2r_lstm
 model.r2l_lstm = pretrained_model.r2l_lstm
 model.embedding = pretrained_model.embedding
+del pretrained_model
 # logger.debug("model params:%s", list(model.parameters()))
 
 optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
