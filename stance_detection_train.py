@@ -202,12 +202,14 @@ for epoch_i in itertools.count(0):
                 (cut * (1.0 / hyper_params.cut_frac - 1));
         learning_rate = hyper_params.learning_rate * (1 + p *
                 (hyper_params.ratio - 1)) / hyper_params.ratio
+        if learning_rate < 0:
+            break
         for g in optimizer.param_groups:
             g["lr"] = learning_rate
         logger.debug("learning_rate:%f", learning_rate)
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
-        if should_print:
+        if batch_i % 10 == 0:
             logger.info("learning_rate:%f", learning_rate)
 
         if should_print:
