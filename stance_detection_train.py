@@ -140,6 +140,7 @@ model = classifier_module.LSTMClassifier(embedding_table).to(
 model.l2r_lstm = pretrained_model.l2r_lstm
 model.r2l_lstm = pretrained_model.r2l_lstm
 model.embedding = pretrained_model.embedding
+model.embedding.weight.requires_grad = hyper_params.embedding_tuning
 del pretrained_model
 # logger.debug("model params:%s", list(model.parameters()))
 
