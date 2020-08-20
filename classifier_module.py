@@ -16,11 +16,11 @@ hyper_params = imp.load_source("module.name", sys.argv[1])
 class LSTMClassifier(nn.Module):
     def __init__(self, embedding):
         super(LSTMClassifier, self).__init__()
-        randn = lambda : torch.randn(hyper_params.layer,
+        zeros = lambda : torch.zeros(hyper_params.layer,
                 hyper_params.batch_size, hyper_params.hidden_dim,
-                requires_grad = True).to(device = configs.device)
-        self.l2r_initial_hiddens = (randn(), randn())
-        self.r2l_initial_hiddens = (randn(), randn())
+                requires_grad = False).to(device = configs.device)
+        self.l2r_initial_hiddens = (zeros(), zeros())
+        self.r2l_initial_hiddens = (zeros(), zeros())
         self.embedding = embedding
         self.l2r_lstm = nn.LSTM(hyper_params.word_dim,
                 hyper_params.hidden_dim, bidirectional = False,

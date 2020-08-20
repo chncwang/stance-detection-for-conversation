@@ -87,7 +87,7 @@ if not hyper_params.embedding_tuning:
 
 logger.info("pretrained_model loading...")
 pretrained_model, stored_opt, vocab, _ = lm_utils.loadLmCheckPoint(
-        "/var/wqs/pretrained/lstm/model-5-2020-08-17-21-35", hyper_params)
+        "/var/wqs/pretrained/lstm/model-3-2020-08-20-14-35", hyper_params)
 del stored_opt
 logger.info("pretrained_model loaded")
 # vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
