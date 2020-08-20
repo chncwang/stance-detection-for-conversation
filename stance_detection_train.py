@@ -135,12 +135,25 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
+def setGradRequired(weights, required):
+    for w in weights:
+        if isinstance(w, list):
+            setGradRequired(w, required)
+        else:
+            w.requires_grad = required
+
 model = classifier_module.LSTMClassifier(embedding_table).to(
         device = configs.device)
 model.l2r_lstm = pretrained_model.l2r_lstm
 model.r2l_lstm = pretrained_model.r2l_lstm
 model.embedding = pretrained_model.embedding
-model.embedding.weight.requires_grad = hyper_params.embedding_tuning
+model.embedding.weight.requires_grad = False
+setGradRequired(model.l2r_lstm.all_weights, False)
+setGradRequired(model.r2l_lstm.all_weights, False)
+for initial_hiddens in [model.l2r_initial_hiddens, model.r2l_initial_hiddens]:
+    for hiddens in initial_hiddens:
+        hiddens.requires_grad = False
+
 del pretrained_model
 # logger.debug("model params:%s", list(model.parameters()))
 
@@ -191,6 +204,13 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
+
+    if epoch_i == 1:
+        setGradRequired(model.l2r_lstm.all_weights, True)
+        setGradRequired(model.r2l_lstm.all_weights, True)
+    elif epoch_i == 2:
+        model.embedding.weight.requires_grad = hyper_params.embedding_tuning
+
     for l2r_sentence_tensor, r2l_sentence_tensor, sentence_lens, label_tensor\
             in training_generator:
         batch_i += 1
