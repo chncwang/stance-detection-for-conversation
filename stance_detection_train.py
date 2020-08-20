@@ -144,8 +144,13 @@ model.embedding.weight.requires_grad = hyper_params.embedding_tuning
 del pretrained_model
 # logger.debug("model params:%s", list(model.parameters()))
 
-optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
-        weight_decay = hyper_params.weight_decay)
+layer_lr = hyper_params.learning_rate
+param_lr_list = [{"params": model.mlp_to_label.parameters(), "lr": layer_lr}]
+layer_lr *= hyper_params.layer_lr_decay
+param_lr_list.append({"params": model.l2r_lstm.parameters(), "lr": layer_lr})
+param_lr_list.append({"params": model.r2l_lstm.parameters(), "lr": layer_lr})
+
+optimizer = optim.Adam(param_lr_list, weight_decay = hyper_params.weight_decay)
 PAD_ID = vocab.stoi["<pad>"]
 if PAD_ID != 1:
     logger.error("pad id should be 1, but is %d", PAD_ID)
