@@ -201,8 +201,13 @@ def evaluate(model, samples):
     model.train()
     return metrics.f1_score(ground_truths, predicted_idxes, average = None)
 
+initial_lr_dict = {}
+for g in optimizer.param_groups:
+    initial_lr_dict[id(g)] = g["lr"]
+
 stagnation_epochs = 0
 best_epoch_i = 0
+step = 0
 best_dev_macro, best_test_macro = 0.0, 0.0
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 10:
@@ -223,8 +228,22 @@ for epoch_i in itertools.count(0):
     for l2r_sentence_tensor, r2l_sentence_tensor, sentence_lens, label_tensor\
             in training_generator:
         batch_i += 1
+        step += 1
+
+        t = step + 1
+        cut = hyper_params.T * hyper_params.cut_frac
+        p = (t / cut) if step < cut else 1 - (t - cut) /\
+                (cut * (1.0 / hyper_params.cut_frac - 1));
+        p = (1 + p * (hyper_params.ratio - 1)) / hyper_params.ratio
+        if p < 0:
+            break
+        for g in optimizer.param_groups:
+            g["lr"] = p * initial_lr_dict[id(g)]
+            if batch_i % 10 == 0:
+                logger.info("learning_rate:%f", g["lr"])
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
+
         if should_print:
             words = [vocab.itos[x] for x in l2r_sentence_tensor[0]\
                     if x != PAD_ID]
