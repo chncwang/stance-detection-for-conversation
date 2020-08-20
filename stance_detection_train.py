@@ -147,9 +147,12 @@ model = classifier_module.LSTMClassifier(embedding_table).to(
 model.l2r_lstm = pretrained_model.l2r_lstm
 model.r2l_lstm = pretrained_model.r2l_lstm
 model.embedding = pretrained_model.embedding
-model.embedding.weight.requires_grad = False
-setGradRequired(model.l2r_lstm.all_weights, False)
-setGradRequired(model.r2l_lstm.all_weights, False)
+
+if hyper_params.gradual_unfreeze:
+    model.embedding.weight.requires_grad = False
+    setGradRequired(model.l2r_lstm.all_weights, False)
+    setGradRequired(model.r2l_lstm.all_weights, False)
+
 for initial_hiddens in [model.l2r_initial_hiddens, model.r2l_initial_hiddens]:
     for hiddens in initial_hiddens:
         hiddens.requires_grad = False

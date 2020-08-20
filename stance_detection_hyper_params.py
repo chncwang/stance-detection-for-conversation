@@ -9,3 +9,4 @@ learning_rate = 3e-3
 weight_decay = 1e-5
 clip_grad = 1e1
 layer = 1
+gradual_unfreeze = True
