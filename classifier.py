@@ -71,22 +71,15 @@ class TransformerClassifier(nn.Module):
                 dropout = hyper_params.dropout,
                 max_len = max_len_for_positional_encoding)
 
-    def forwardSentenceToTransformer(self, input_tensor, lens,
-            src_key_padding_mask,
-            transformer):
-        input_tensor = input_tensor.permute(1, 0, 2)
-        logger.debug("input_tensor size:%s", input_tensor.size())
-        return transformer(input_tensor,
-                src_key_padding_mask = src_key_padding_mask)
-
     def passSentenceToPooled(self, sentence, lens, src_key_padding_mask,
             transformer):
         word_vectors = self.embedding(sentence).to(device = configs.device)
         word_vectors = self.input_linear(word_vectors)
         word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
         word_vectors = self.postional_encoding(word_vectors)
-        hiddens = self.forwardSentenceToTransformer(word_vectors, lens,
-                src_key_padding_mask, transformer)
+        word_vectors = word_vectors.permute(1, 0, 2)
+        hiddens = transformer(word_vectors,
+                src_key_padding_mask = src_key_padding_mask)
         self.dropout(hiddens)
         logger.debug("hiddens size:%s", hiddens.size())
         hiddens = hiddens.permute(1, 0, 2)
@@ -111,8 +104,32 @@ class TransformerClassifier(nn.Module):
         src_key_padding_mask = src_key_padding_mask.to(device = configs.device)
         logger.debug("sentence_tensor size:%s", sentence_tensor.size())
         batch_size = sentence_tensor.size()[0]
-        sentence_pooled = self.passSentenceToPooled(sentence_tensor,
-                sentence_lens, src_key_padding_mask, self.transformer)
+        word_vectors = self.embedding(sentence_tensor).\
+                to(device = configs.device)
+        word_vectors = self.input_linear(word_vectors)
+        word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
+        word_vectors = self.postional_encoding(word_vectors)
+        word_vectors = word_vectors.permute(1, 0, 2)
+        hiddens = self.transformer(word_vectors,
+                src_key_padding_mask = src_key_padding_mask)
+        self.dropout(hiddens)
+        logger.debug("hiddens size:%s", hiddens.size())
+        hiddens = hiddens.permute(1, 0, 2)
+        logger.debug("hiddens size:%s", hiddens.size())
+        max_len = hiddens.size()[1]
+
+        for idx, sent_hiddens in enumerate(hiddens):
+            x = torch.FloatTensor([-math.inf] * hyper_params.hidden_dim *
+                    (max_len - sentence_lens[idx])).\
+                            view(max_len - sentence_lens[idx],
+                                    hyper_params.hidden_dim)
+            logger.debug("x size:%s hiddens[idx] size:%s len:%d", x.size(),
+                    hiddens[idx].size(), sentence_lens[idx])
+            sent_hiddens[sentence_lens[idx]:] = x
+
+        hiddens = hiddens.permute(0, 2, 1)
+        logger.debug("hiddens:%s", hiddens)
+        sentence_pooled = nn.MaxPool1d(max_len)(hiddens)
         logger.debug("sentence_pooled size:%s", sentence_pooled.size())
         sentence_pooled = sentence_pooled.permute(0, 2, 1)
         output = self.mlp_to_label(sentence_pooled)

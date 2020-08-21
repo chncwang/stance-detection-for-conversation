@@ -1,7 +1,7 @@
 import datetime
 import math
 import sys
-import model
+import classifier
 import torch
 import torchtext
 import configs
@@ -73,7 +73,7 @@ def sentenceToCounter(sentence, counter):
 
 counter = collections.Counter()
 for idx, sample in enumerate(to_build_vocb_samples):
-    sentenceToCounter(sample.post + " <SEP> " + sample.response, counter)
+    sentenceToCounter(sample.post + " <sep> " + sample.response, counter)
 
 def oovCount(sentence, counter):
     words = sentence.split(" ")
@@ -86,7 +86,7 @@ def oovCount(sentence, counter):
 oov_count = 0
 all_words_count = 0
 for idx, sample in enumerate(to_build_vocb_samples):
-    t = oovCount(sample.post + " <SEP> " + sample.response, counter)
+    t = oovCount(sample.post + " <sep> " + sample.response, counter)
     oov_count += t[0]
     all_words_count += t[1]
 
@@ -123,7 +123,7 @@ def srcMask(word_ids_arr, lens):
     return tensor
 
 def buildDataset(samples, stoi):
-    sentences = [s.post + " <SEP> " + s.response for s in samples]
+    sentences = [s.post + " <sep> " + s.response for s in samples]
     words_arr = [s.split(" ") for s in sentences]
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
@@ -132,7 +132,7 @@ def buildDataset(samples, stoi):
     src_key_padding_mask = srcMask(sentences_indexes_arr, sentence_lens)
     label_tensor = torch.LongTensor(labels)
 
-    return dataset.Dataset(sentence_tensor, sentence_lens,
+    return dataset.StanceDetectionDataset(sentence_tensor, sentence_lens,
             src_key_padding_mask, label_tensor)
 
 training_set = buildDataset(training_samples, vocab.stoi)
@@ -148,7 +148,7 @@ if g_max_len >= MAX_LEN_FOR_POSITIONAL_ENCODING:
     logger.error("g_max_len:%d MAX_LEN_FOR_POSITIONAL_ENCODING:%d", g_max_len,
             MAX_LEN_FOR_POSITIONAL_ENCODING)
     sys.exit(1)
-model = model.TransformerClassifier(embedding_table,
+model = classifier.TransformerClassifier(embedding_table,
         MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
 PAD_ID = vocab.stoi["<pad>"]
 
