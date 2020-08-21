@@ -2,13 +2,16 @@ import torch
 import math
 import torch.nn as nn
 import torch.autograd as autograd
-import hyper_params
 import configs
 import functools
 import torch.nn.utils.rnn as rnn
 import utils
+import imp
+import sys
 
 logger = utils.getLogger(__file__)
+
+hyper_params = imp.load_source("module.name", sys.argv[1])
 
 class PositionalEncoding(nn.Module):
     r"""Inject some information about the relative or absolute position of the tokens
