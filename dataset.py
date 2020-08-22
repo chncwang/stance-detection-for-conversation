@@ -46,9 +46,11 @@ def readLmSentences(path, posts, responses, rate = 1.0):
 
 class LmDataset(torch.utils.data.Dataset):
     def __init__(self, src_sentence_tensor, tgt_sentence_tensor,
+            src_key_padding_mask,
             sentence_lens):
         self.src_sentence_tensor = src_sentence_tensor
         self.tgt_sentence_tensor = tgt_sentence_tensor
+        self.src_key_padding_mask = src_key_padding_mask
         self.sentence_lens = sentence_lens
 
     def __len__(self):
@@ -56,4 +58,4 @@ class LmDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.src_sentence_tensor[idx], self.tgt_sentence_tensor[idx],\
-                self.sentence_lens[idx]
+                self.src_key_padding_mask[idx], self.sentence_lens[idx]

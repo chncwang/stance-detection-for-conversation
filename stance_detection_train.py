@@ -115,13 +115,6 @@ def pad_batch(word_ids_arr, lens):
         tensor[idx, :seq_len] = x
     return tensor
 
-def srcMask(word_ids_arr, lens):
-    max_len = max(lens)
-    tensor = torch.zeros(len(word_ids_arr), max_len, dtype = torch.bool)
-    for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lens)):
-        tensor[idx, seq_len:] = torch.FloatTensor([True] * (max_len - seq_len))
-    return tensor
-
 def buildDataset(samples, stoi):
     sentences = [s.post + " <sep> " + s.response for s in samples]
     words_arr = [s.split(" ") for s in sentences]
@@ -129,7 +122,7 @@ def buildDataset(samples, stoi):
     sentence_lens = [len(s) for s in words_arr]
     labels = [int(s.stance) for s in samples]
     sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
-    src_key_padding_mask = srcMask(sentences_indexes_arr, sentence_lens)
+    src_key_padding_mask = utils.srcMask(sentences_indexes_arr, sentence_lens)
     label_tensor = torch.LongTensor(labels)
 
     return dataset.StanceDetectionDataset(sentence_tensor, sentence_lens,
@@ -143,13 +136,12 @@ data_loader_params = {
 training_generator = torch.utils.data.DataLoader(training_set,
         **data_loader_params)
 
-MAX_LEN_FOR_POSITIONAL_ENCODING = 200
-if g_max_len >= MAX_LEN_FOR_POSITIONAL_ENCODING:
+if g_max_len >= configs.MAX_LEN_FOR_POSITIONAL_ENCODING:
     logger.error("g_max_len:%d MAX_LEN_FOR_POSITIONAL_ENCODING:%d", g_max_len,
-            MAX_LEN_FOR_POSITIONAL_ENCODING)
+            configs.MAX_LEN_FOR_POSITIONAL_ENCODING)
     sys.exit(1)
 model = classifier.TransformerClassifier(embedding_table,
-        MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
+        configs.MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
 PAD_ID = vocab.stoi["<pad>"]
 
 CPU_DEVICE = torch.device("cpu")

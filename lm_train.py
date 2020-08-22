@@ -26,7 +26,6 @@ logger.info("torch version:%s", torch.__version__)
 hyper_params = imp.load_source("module.name", sys.argv[1])
 
 utils.printLmHyperParams(hyper_params)
-utils.printConfigs()
 
 torch.manual_seed(hyper_params.seed)
 
@@ -116,15 +115,17 @@ def buildDataset(samples, stoi):
     words_arr = [s.split(" ") for s in samples]
 
     src_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
-    applyLangMask(src_sentences_indexes_arr)
+    mask_id = stoi["<mask>"]
+    applyLangMask(src_sentences_indexes_arr, mask_id, len(stoi))
     tgt_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
-
+    src_key_padding_mask = utils.srcMask(src_sentences_indexes_arr,
+            sentence_lens)
     src_sentence_tensor = pad_batch(src_sentences_indexes_arr, sentence_lens)
     tgt_sentence_tensor = pad_batch(tgt_sentences_indexes_arr, sentence_lens)
 
     return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
-            sentence_lens)
+            src_key_padding_mask, sentence_lens)
 
 def saveCheckPoint(model, optimizer, vocab, learning_rate, epoch):
     state = {"model": model.state_dict(),
@@ -147,7 +148,7 @@ def loadCheckPoint(path):
     state = torch.load(path)
     vocab = state["vocab"]
     embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
-    model = lm_module.LstmLm(embedding_table, len(vocab)).to(
+    model = lm_module.TransformerLm(embedding_table, len(vocab)).to(
             device = configs.device)
     optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
             weight_decay = hyper_params.weight_decay)
@@ -159,8 +160,9 @@ def loadCheckPoint(path):
 
 model, optimizer, learning_rate = None, None, None
 if configs.model_file is None:
-    model = lm_module.LstmLm(embedding_table, len(vocab)).to(
-            device = configs.device)
+    model = lm_module.TransformerLm(embedding_table, len(vocab),
+            configs.MAX_LEN_FOR_POSITIONAL_ENCODING).\
+                    to( device = configs.device)
     learning_rate = hyper_params.learning_rate
     optimizer = optim.Adam(model.parameters(), lr = learning_rate,
             weight_decay = hyper_params.weight_decay)
@@ -204,7 +206,7 @@ def evaluate(model, samples):
             predicted = model(l2r_src_tensor, r2l_src_tensor, lens)
             l2r_tgt_tensor = l2r_tgt_tensor.to(device = configs.device)
             r2l_tgt_tensor = r2l_tgt_tensor.to(device = configs.device)
-            for direction_i, (tgt_tensor, logsoftmax) in enumerate(zip(
+            for direction_i, (tgt_tensor, predicted) in enumerate(zip(
                     [l2r_tgt_tensor, r2l_tgt_tensor], predicted)):
                 ids_list = []
                 len_sum = 0
@@ -231,83 +233,78 @@ for epoch_i in itertools.count(0):
     if stagnation_epochs >= 2:
         break
     batch_i = -1
-    loss_sums = [0.0, 0.0]
+    loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
     logger.info("learning_rate:%f", learning_rate)
     total_token_count = 0
-    total_hit_counts = [0, 0]
-    for src_tensor, tgt_tensor, lens in training_generator:
+    total_hit_count = 0
+    for src_tensor, tgt_tensor, src_key_padding_mask, lens in\
+            training_generator:
+        logger.debug("src_tensor size:%s", src_tensor.size())
+        logger.debug("src_key_padding_mask size:%s",
+                src_key_padding_mask.size())
         batch_i += 1
 
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
         if should_print:
             logger.info("batch_i:%d", batch_i)
-            words = [vocab.itos[x] for x in l2r_src_tensor[0] if x != PAD_ID]
+            t = src_tensor[0]
+            words = [vocab.itos[x] for x in t if x != PAD_ID]
+            logger.info("sentence:%s", " ".join(words))
+            words = [vocab.itos[x] for x in tgt_tensor[0] if x != PAD_ID]
             logger.info("sentence:%s", " ".join(words))
 
         model.zero_grad()
-        l2r_src_tensor = l2r_src_tensor.to(device = configs.device)
-        r2l_src_tensor = r2l_src_tensor.to(device = configs.device)
-        predicted = model(l2r_src_tensor, r2l_src_tensor, lens)
-        logger.debug("predicted size:%s", predicted[0].size())
-        l2r_tgt_tensor = l2r_tgt_tensor.to(device = configs.device)
-        r2l_tgt_tensor = r2l_tgt_tensor.to(device = configs.device)
-        logger.debug("tgt_tensor size:%s", l2r_tgt_tensor.size())
+        src_tensor = src_tensor.to(device = configs.device)
+        predicted = model(src_tensor, lens, src_key_padding_mask)
+        logger.debug("predicted size:%s", predicted.size())
+        tgt_tensor = tgt_tensor.to(device = configs.device)
+        logger.debug("tgt_tensor size:%s", tgt_tensor.size())
 
-        losses = [0.0] * 2
-        concated_arr = [None] * 2
-        for direction_i, (tgt_tensor, logsoftmax) in\
-                enumerate(zip([l2r_tgt_tensor, r2l_tgt_tensor], predicted)):
-            ids_list = []
-            first_len = 0
-            for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
-                sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
-                logger.debug("sentence_ids size:%s", sentence_ids.size())
-                length = lens[i]
-                logger.debug("length:%d", length)
-                if i == 0:
-                    first_len = length
-                non_padded = torch.split(sentence_ids,
-                        [length, tgt_tensor.size()[1] - length], 0)[0]
-                logger.debug("non_padded size:%s", non_padded.size())
-                ids_list.append(non_padded)
-            ids_tuple = tuple(ids_list)
-            concated = torch.cat(ids_tuple)
-            concated_arr[direction_i] = concated
-            logger.debug("concated size:%s predicted size:%s", concated.size(),
-                    logsoftmax[0].size())
-            loss = nn.NLLLoss()(logsoftmax, concated)
-            losses[direction_i] = float(loss)
-            loss.backward()
+        ids_list = []
+        first_len = 0
+        for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
+            sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
+            logger.debug("sentence_ids size:%s", sentence_ids.size())
+            length = lens[i]
+            logger.debug("length:%d", length)
+            if i == 0:
+                first_len = length
+            non_padded = torch.split(sentence_ids,
+                    [length, tgt_tensor.size()[1] - length], 0)[0]
+            logger.debug("non_padded size:%s", non_padded.size())
+            ids_list.append(non_padded)
+        ids_tuple = tuple(ids_list)
+        concated = torch.cat(ids_tuple)
+        logger.debug("concated size:%s predicted size:%s", concated.size(),
+                predicted.size())
+        loss = nn.NLLLoss()(predicted, concated)
+        loss.backward()
 
         if hyper_params.clip_grad is not None:
             nn.utils.clip_grad_norm_(model.parameters(),
                     hyper_params.clip_grad)
         optimizer.step()
 
-        for direction_i in range(0, 2):
-            predicted_idx = torch.max(predicted[direction_i], 1)[1]
-            predicted_idx = predicted_idx.to(device = CPU_DEVICE).tolist()
-            if should_print:
-                words = [vocab.itos[x] for x in predicted_idx[: first_len]]
-                logger.info("predicted:%s", " ".join(words))
-            logger.debug("predicted_idx len:%d", len(predicted_idx))
-            ground_truth = concated_arr[direction_i].to(
-                    device = CPU_DEVICE).tolist()
-            logger.debug("ground_truth len:%d", len(ground_truth))
-            token_count_in_batch = len(ground_truth)
-            if direction_i == 0:
-                total_token_count += token_count_in_batch
-            loss_sums[direction_i] += losses[direction_i] *\
-                    token_count_in_batch
-            acc = metrics.accuracy_score(ground_truth, predicted_idx)
-            total_hit_counts[direction_i] += acc * token_count_in_batch
-            if should_print:
-                ppl = math.exp(loss_sums[direction_i] / total_token_count)
-                logger.info("%s ppl:%f acc:%f correct:%d total:%d",
-                        "l2r" if direction_i == 0 else "r2l", ppl, acc,
-                        total_hit_counts[direction_i], total_token_count)
+        predicted_idx = torch.max(predicted, 1)[1]
+        predicted_idx = predicted_idx.to(device = CPU_DEVICE).tolist()
+        if should_print:
+            words = [vocab.itos[x] for x in predicted_idx[: first_len]]
+            logger.info("predicted:%s", " ".join(words))
+        logger.debug("predicted_idx len:%d", len(predicted_idx))
+        ground_truth = concated.to(device = CPU_DEVICE).tolist()
+        logger.debug("ground_truth len:%d", len(ground_truth))
+        token_count_in_batch = len(ground_truth)
+        total_token_count += token_count_in_batch
+        loss_sum += loss * token_count_in_batch
+        acc = metrics.accuracy_score(ground_truth, predicted_idx)
+        total_hit_count += acc * token_count_in_batch
+        if should_print:
+            ppl = math.exp(loss_sum / total_token_count)
+            logger.info("ppl:%f acc:%f correct:%d total:%d", ppl,
+                    float(total_hit_count) / total_token_count,
+                    total_hit_count, total_token_count)
 
     logger.info("evaluating dev set...")
     dev_ppls = evaluate(model, dev_samples)
