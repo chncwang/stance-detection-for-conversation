@@ -83,14 +83,58 @@ if not hyper_params.embedding_tuning:
         if counter[k] < hyper_params.min_freq and k in word_vectors.stoi:
             counter[k] = 10000
 
+def isZero(tensor):
+    for i in range(tensor.size()[0]):
+        if abs(tensor[i]) > 1e-10:
+            return False
+    return True
+
+def randomInitUnk(vocab_):
+    vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
+    logger.info("vocab len:%d", len(vocab))
+    logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
+            vocab.stoi["<sep>"])
+    vocab.load_vectors(word_vectors)
+    logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
+            vocab.stoi["<sep>"])
+    embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
+            freeze = True).to(device = configs.device)
+    l = embedding_table.weight.tolist()
+    logger.debug("weight size: %s", embedding_table.weight.size())
+    dim = embedding_table.weight.size()[1]
+    sums = [0.0] * dim
+    for v in l:
+        for i in range(dim):
+            sums[i] += v[i]
+    avgs = [x / len(l) for x in sums]
+    logger.debug("avgs:%s", avgs)
+    del vocab
+    del embedding_table
+    avgs = torch.FloatTensor(avgs)
+    emb_vectors = vocab_.vectors
+    logger.debug("emb_vectors:%s", emb_vectors)
+    pad_id = vocab_.stoi["<pad>"]
+    for i in range(emb_vectors.size()[0]):
+        if i != pad_id and isZero(emb_vectors[i]):
+            emb_vectors[i] = avgs
+
 vocab, embedding_table = None, None
 if configs.model_file is None:
     vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
     logger.info("vocab len:%d", len(vocab))
+    logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
+            vocab.stoi["<sep>"])
     vocab.load_vectors(word_vectors)
+#     randomInitUnk(vocab)
+    logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
+            vocab.stoi["<sep>"])
     embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
             freeze = not hyper_params.embedding_tuning).to(
                     device = configs.device)
+    logger.debug("unk:%s sep:%s pad:%s",
+            embedding_table(torch.LongTensor([0]).to(device = configs.device)),
+            embedding_table(torch.LongTensor([4]).to(device = configs.device)),
+            embedding_table(torch.LongTensor([1]).to(device = configs.device)))
 
 def word_indexes(words, stoi):
     return [stoi[word] for word in words]
@@ -103,7 +147,9 @@ def pad_batch(word_ids_arr, lenghs):
     return tensor
 
 def applyLangMask(ids_arr, mask_id, vocab_size):
-    for ids in ids_arr:
+    for ids_arr_i, ids in enumerate(ids_arr):
+        if ids_arr_i % 10000 == 0:
+            logger.info("applying mask... %f", float(ids_arr_i) / len(ids_arr))
         for i in range(len(ids)):
             r = random.random()
             if r < 0.1:
@@ -114,10 +160,14 @@ def applyLangMask(ids_arr, mask_id, vocab_size):
 def buildDataset(samples, stoi):
     words_arr = [s.split(" ") for s in samples]
 
+    logger.info("transfering words to ids...")
     src_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     mask_id = stoi["<mask>"]
     applyLangMask(src_sentences_indexes_arr, mask_id, len(stoi))
+#     sep_id = stoi["<sep>"]
+#     logger.debug("sep_id:%d", sep_id)
     tgt_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
+#     tgt_sentences_indexes_arr = [[sep_id for x in s] for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
     src_key_padding_mask = utils.srcMask(src_sentences_indexes_arr,
             sentence_lens)
@@ -259,6 +309,7 @@ for epoch_i in itertools.count(0):
         src_tensor = src_tensor.to(device = configs.device)
         predicted = model(src_tensor, lens, src_key_padding_mask)
         logger.debug("predicted size:%s", predicted.size())
+        logger.debug("original predicted:%s", predicted)
         tgt_tensor = tgt_tensor.to(device = configs.device)
         logger.debug("tgt_tensor size:%s", tgt_tensor.size())
 
@@ -277,6 +328,7 @@ for epoch_i in itertools.count(0):
             ids_list.append(non_padded)
         ids_tuple = tuple(ids_list)
         concated = torch.cat(ids_tuple)
+        logger.debug("concated:%s", concated)
         logger.debug("concated size:%s predicted size:%s", concated.size(),
                 predicted.size())
         loss = nn.NLLLoss()(predicted, concated)
@@ -291,6 +343,7 @@ for epoch_i in itertools.count(0):
         predicted_idx = predicted_idx.to(device = CPU_DEVICE).tolist()
         if should_print:
             words = [vocab.itos[x] for x in predicted_idx[: first_len]]
+            word_ids = [str(x) for x in predicted_idx[: first_len]]
             logger.info("predicted:%s", " ".join(words))
         logger.debug("predicted_idx len:%d", len(predicted_idx))
         ground_truth = concated.to(device = CPU_DEVICE).tolist()
