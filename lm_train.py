@@ -302,6 +302,7 @@ def evaluate(model, samples):
 stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_ppl = 1e100
+step = 0
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 2:
         break
@@ -313,9 +314,9 @@ for epoch_i in itertools.count(0):
     total_hit_count = 0
     for src_tensor, tgt_tensor, src_key_padding_mask, lens in\
             training_generator:
+        step += 1
         batch_i += 1
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
-        step = batch_i + 1
         lr = math.pow(hyper_params.hidden_dim, -0.5) * min(pow(step, -0.5),
                 step * pow(hyper_params.warm_up_steps, -1.5))
         if should_print:
