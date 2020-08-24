@@ -43,6 +43,9 @@ logger.info("traning samples count:%d", len(training_samples))
 dev_samples = readSentences("/var/wqs/stance-lm/dev")
 logger.info("dev samples count:%d", len(dev_samples))
 
+corpus_max_len = max([len(s) for s in (training_samples + dev_samples)])
+logger.info("corpus_max_len:%d", corpus_max_len)
+
 to_build_vocb_samples = None
 if hyper_params.embedding_tuning:
     to_build_vocb_samples = training_samples
@@ -89,39 +92,41 @@ def isZero(tensor):
             return False
     return True
 
-def randomInitUnk(vocab_):
-    vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
-    logger.info("vocab len:%d", len(vocab))
-    logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
-            vocab.stoi["<sep>"])
-    vocab.load_vectors(word_vectors)
-    logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
-            vocab.stoi["<sep>"])
-    embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
-            freeze = True).to(device = configs.device)
-    l = embedding_table.weight.tolist()
-    logger.debug("weight size: %s", embedding_table.weight.size())
-    dim = embedding_table.weight.size()[1]
-    sums = [0.0] * dim
-    for v in l:
-        for i in range(dim):
-            sums[i] += v[i]
-    avgs = [x / len(l) for x in sums]
-    logger.debug("avgs:%s", avgs)
-    del vocab
-    del embedding_table
-    avgs = torch.FloatTensor(avgs)
-    emb_vectors = vocab_.vectors
-    logger.debug("emb_vectors:%s", emb_vectors)
-    pad_id = vocab_.stoi["<pad>"]
-    for i in range(emb_vectors.size()[0]):
-        if i != pad_id and isZero(emb_vectors[i]):
-            emb_vectors[i] = avgs
+# def randomInitUnk(vocab_):
+#     vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
+#     logger.info("vocab len:%d", len(vocab))
+#     logger.debug("stoi len:%d", len(vocab.stoi))
+#     logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
+#             vocab.stoi["<sep>"])
+#     vocab.load_vectors(word_vectors)
+#     logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
+#             vocab.stoi["<sep>"])
+#     embedding_table = nn.Embedding.from_pretrained(vocab.vectors,
+#             freeze = True).to(device = configs.device)
+#     l = embedding_table.weight.tolist()
+#     logger.debug("weight size: %s", embedding_table.weight.size())
+#     dim = embedding_table.weight.size()[1]
+#     sums = [0.0] * dim
+#     for v in l:
+#         for i in range(dim):
+#             sums[i] += v[i]
+#     avgs = [x / len(l) for x in sums]
+#     logger.debug("avgs:%s", avgs)
+#     del vocab
+#     del embedding_table
+#     avgs = torch.FloatTensor(avgs)
+#     emb_vectors = vocab_.vectors
+#     logger.debug("emb_vectors:%s", emb_vectors)
+#     pad_id = vocab_.stoi["<pad>"]
+#     for i in range(emb_vectors.size()[0]):
+#         if i != pad_id and isZero(emb_vectors[i]):
+#             emb_vectors[i] = avgs
 
 vocab, embedding_table = None, None
 if configs.model_file is None:
     vocab = torchtext.vocab.Vocab(counter, min_freq = hyper_params.min_freq)
     logger.info("vocab len:%d", len(vocab))
+    logger.debug("stoi len:%d", len(vocab.stoi))
     logger.debug("unk id:%d sep id:%d", vocab.stoi["<unk>"],
             vocab.stoi["<sep>"])
     vocab.load_vectors(word_vectors)
@@ -136,7 +141,7 @@ if configs.model_file is None:
             embedding_table(torch.LongTensor([4]).to(device = configs.device)),
             embedding_table(torch.LongTensor([1]).to(device = configs.device)))
 
-def word_indexes(words, stoi):
+def wordIndexes(words, stoi, vocab_len):
     return [stoi[word] for word in words]
 
 def pad_batch(word_ids_arr, lenghs):
@@ -157,22 +162,35 @@ def applyLangMask(ids_arr, mask_id, vocab_size):
             elif r < 0.2:
                 ids[i] = random.randint(0, vocab_size - 1)
 
-def buildDataset(samples, stoi):
+def buildDataset(samples, stoi, vocab_len):
+    logger.debug("stoi len:%d", len(stoi))
     words_arr = [s.split(" ") for s in samples]
 
+    logger.debug("stoi len:%d", len(stoi))
     logger.info("transfering words to ids...")
-    src_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
+    logger.debug("stoi len:%d", len(stoi))
+    src_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in\
+            words_arr]
+    logger.debug("stoi len:%d", len(stoi))
     mask_id = stoi["<mask>"]
-    applyLangMask(src_sentences_indexes_arr, mask_id, len(stoi))
+    logger.debug("stoi len:%d", len(stoi))
+    applyLangMask(src_sentences_indexes_arr, mask_id, vocab_len)
+    logger.debug("stoi len:%d", len(stoi))
 #     sep_id = stoi["<sep>"]
 #     logger.debug("sep_id:%d", sep_id)
-    tgt_sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
+    tgt_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in\
+            words_arr]
+    logger.debug("stoi len:%d", len(stoi))
 #     tgt_sentences_indexes_arr = [[sep_id for x in s] for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
+    logger.debug("stoi len:%d", len(stoi))
     src_key_padding_mask = utils.srcMask(src_sentences_indexes_arr,
             sentence_lens)
+    logger.debug("stoi len:%d", len(stoi))
     src_sentence_tensor = pad_batch(src_sentences_indexes_arr, sentence_lens)
+    logger.debug("stoi len:%d", len(stoi))
     tgt_sentence_tensor = pad_batch(tgt_sentences_indexes_arr, sentence_lens)
+    logger.debug("stoi len:%d", len(stoi))
 
     return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
             src_key_padding_mask, sentence_lens)
@@ -198,9 +216,10 @@ def loadCheckPoint(path):
     state = torch.load(path)
     vocab = state["vocab"]
     embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
-    model = lm_module.TransformerLm(embedding_table, len(vocab)).to(
-            device = configs.device)
-    optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
+    model = lm_module.TransformerLm(embedding_table, len(vocab),
+            configs.MAX_LEN_FOR_POSITIONAL_ENCODING).to(
+                    device = configs.device)
+    optimizer = optim.Adam(model.parameters(), lr = 1e-3,
             weight_decay = hyper_params.weight_decay)
     model.load_state_dict(state["model"])
     optimizer.load_state_dict(state["optimizer"])
@@ -213,20 +232,24 @@ if configs.model_file is None:
     model = lm_module.TransformerLm(embedding_table, len(vocab),
             configs.MAX_LEN_FOR_POSITIONAL_ENCODING).\
                     to( device = configs.device)
-    learning_rate = hyper_params.learning_rate
-    optimizer = optim.Adam(model.parameters(), lr = learning_rate,
+    optimizer = optim.Adam(model.parameters(), lr = 1e-3,
             weight_decay = hyper_params.weight_decay)
 else:
     logger.info("loading %s...", configs.model_file)
     model, optimizer, vocab, learning_rate = loadCheckPoint(configs.model_file)
 
-training_set = buildDataset(training_samples, vocab.stoi)
+def buildDatasetAndGenerator(samples, stoi, vocab_len):
+    training_set = buildDataset(samples, stoi, vocab_len)
 
-data_loader_params = {
-        "batch_size": hyper_params.batch_size,
-        "shuffle": True }
-training_generator = torch.utils.data.DataLoader(training_set,
-        **data_loader_params)
+    data_loader_params = {
+            "batch_size": hyper_params.batch_size,
+            "shuffle": True }
+    training_generator = torch.utils.data.DataLoader(training_set,
+            **data_loader_params)
+    return training_set, training_generator
+
+training_set, training_generator = buildDatasetAndGenerator(training_samples,
+        vocab.stoi, len(vocab))
 
 PAD_ID = vocab.stoi["<pad>"]
 if PAD_ID != 1:
@@ -238,26 +261,27 @@ CPU_DEVICE = torch.device("cpu")
 def evaluate(model, samples):
     model.eval()
     with torch.no_grad():
-        evaluation_set = buildDataset(samples, vocab.stoi)
-        evaluation_loader_params = {
-                "batch_size": configs.evaluation_batch_size,
-                "shuffle": False }
-        evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
-            **evaluation_loader_params)
-        loss_sums = [0.0, 0.0]
-        dataset_len_sum = 0
-        for l2r_src_tensor, l2r_tgt_tensor, r2l_src_tensor, r2l_tgt_tensor,\
-                lens in evaluation_generator:
-            l2r_src_tensor = l2r_src_tensor.to(device = configs.device)
-            r2l_src_tensor = r2l_src_tensor.to(device = configs.device)
-            logger.debug("src_tensor size:%s tgt_tensor size:%s",
-                    l2r_src_tensor.size(), l2r_tgt_tensor.size())
-            logger.debug("lens:%s", lens)
-            predicted = model(l2r_src_tensor, r2l_src_tensor, lens)
-            l2r_tgt_tensor = l2r_tgt_tensor.to(device = configs.device)
-            r2l_tgt_tensor = r2l_tgt_tensor.to(device = configs.device)
-            for direction_i, (tgt_tensor, predicted) in enumerate(zip(
-                    [l2r_tgt_tensor, r2l_tgt_tensor], predicted)):
+        for i in range(10):
+            logger.debug("vocab len:%d", len(vocab))
+            logger.debug("stoi len:%d", len(vocab.stoi))
+            evaluation_set = buildDataset(samples, vocab.stoi, len(vocab))
+            logger.debug("vocab len:%d", len(vocab))
+            logger.debug("stoi len:%d", len(vocab.stoi))
+            evaluation_loader_params = {
+                    "batch_size": configs.evaluation_batch_size,
+                    "shuffle": False }
+            evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
+                **evaluation_loader_params)
+            loss_sum = 0.0
+            dataset_len_sum = 0
+            for src_tensor, tgt_tensor, src_key_padding_mask, lens in\
+                    training_generator:
+                src_tensor = src_tensor.to(device = configs.device)
+                logger.debug("src_tensor size:%s tgt_tensor size:%s",
+                        src_tensor.size(), tgt_tensor.size())
+                logger.debug("lens:%s", lens)
+                predicted = model(src_tensor, lens, src_key_padding_mask)
+                tgt_tensor = tgt_tensor.to(device = configs.device)
                 ids_list = []
                 len_sum = 0
                 for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
@@ -269,12 +293,11 @@ def evaluate(model, samples):
                     ids_list.append(non_padded)
                 ids_tuple = tuple(ids_list)
                 concated = torch.cat(ids_tuple)
-                loss = nn.NLLLoss()(logsoftmax, concated)
-                loss_sums[direction_i] += loss * len_sum
-                if direction_i == 0:
-                    dataset_len_sum += len_sum
+                loss = nn.NLLLoss()(predicted, concated)
+                loss_sum += loss * len_sum
+                dataset_len_sum += len_sum
     model.train()
-    return [math.exp(s / dataset_len_sum) for s in loss_sums]
+    return math.exp(loss_sum / dataset_len_sum)
 
 stagnation_epochs = 0
 best_epoch_i = 0
@@ -286,17 +309,23 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
-    logger.info("learning_rate:%f", learning_rate)
     total_token_count = 0
     total_hit_count = 0
     for src_tensor, tgt_tensor, src_key_padding_mask, lens in\
             training_generator:
+        batch_i += 1
+        should_print = batch_i * hyper_params.batch_size % 1000 == 0
+        step = batch_i + 1
+        lr = math.pow(hyper_params.hidden_dim, -0.5) * min(pow(step, -0.5),
+                step * pow(hyper_params.warm_up_steps, -1.5))
+        if should_print:
+            logger.info("lr:%f", lr)
+        for g in optimizer.param_groups:
+            g["lr"] = lr
         logger.debug("src_tensor size:%s", src_tensor.size())
         logger.debug("src_key_padding_mask size:%s",
                 src_key_padding_mask.size())
-        batch_i += 1
 
-        should_print = batch_i * hyper_params.batch_size % 1000 == 0
         if should_print:
             logger.info("batch_i:%d", batch_i)
             t = src_tensor[0]
@@ -359,10 +388,13 @@ for epoch_i in itertools.count(0):
                     float(total_hit_count) / total_token_count,
                     total_hit_count, total_token_count)
 
+    logger.debug("stoi len:%d", len(vocab.stoi))
+
+    logger.debug("vocab len:%d", len(vocab))
+    logger.debug("stoi len:%d", len(vocab.stoi))
     logger.info("evaluating dev set...")
-    dev_ppls = evaluate(model, dev_samples)
-    logger.info("dev ppls:%s", dev_ppls)
-    dev_ppl = 0.5 * sum(dev_ppls)
+    dev_ppl = evaluate(model, dev_samples)
+    logger.info("dev ppl:%s", dev_ppl)
 
     if dev_ppl < best_dev_ppl:
         best_epoch_i = epoch_i
@@ -370,14 +402,13 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", best_dev_ppl)
         stagnation_epochs = 0
-        saveCheckPoint(model, optimizer, vocab, learning_rate, epoch_i)
+        saveCheckPoint(model, optimizer, vocab, lr, epoch_i)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
     logger.info("best epoch:%d dev_ppl:%f", best_epoch_i, best_dev_ppl)
 
-    learning_rate = (learning_rate - hyper_params.min_learning_rate) *\
-            hyper_params.lr_decay + hyper_params.min_learning_rate
-    logger.info("new learning rate:%f", learning_rate)
-    for g in optimizer.param_groups:
-        g["lr"] = learning_rate
+    logger.debug("vocab len:%d", len(vocab))
+    logger.debug("stoi len:%d", len(vocab.stoi))
+    training_set, training_generator = buildDatasetAndGenerator(
+            training_samples, vocab.stoi, len(vocab))
