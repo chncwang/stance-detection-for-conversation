@@ -157,9 +157,9 @@ def applyLangMask(ids_arr, mask_id, vocab_size):
             logger.info("applying mask... %f", float(ids_arr_i) / len(ids_arr))
         for i in range(len(ids)):
             r = random.random()
-            if r < 0.1:
+            if r < 0.12:
                 ids[i] = mask_id
-            elif r < 0.2:
+            elif r < 0.135:
                 ids[i] = random.randint(0, vocab_size - 1)
 
 def buildDataset(samples, stoi, vocab_len):
