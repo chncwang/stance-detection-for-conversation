@@ -195,7 +195,7 @@ def buildDataset(samples, stoi, vocab_len):
     return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
             src_key_padding_mask, sentence_lens)
 
-def saveCheckPoint(model, optimizer, vocab, step):
+def saveCheckPoint(model, optimizer, vocab, step, epoch):
     state = {"model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
             "step": step,
@@ -389,8 +389,6 @@ for epoch_i in itertools.count(0):
             logger.info("ppl:%f acc:%f correct:%d total:%d", ppl,
                     float(total_hit_count) / total_token_count,
                     total_hit_count, total_token_count)
-        break # TODO
-
     logger.debug("stoi len:%d", len(vocab.stoi))
 
     logger.debug("vocab len:%d", len(vocab))
