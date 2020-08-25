@@ -195,10 +195,10 @@ def buildDataset(samples, stoi, vocab_len):
     return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
             src_key_padding_mask, sentence_lens)
 
-def saveCheckPoint(model, optimizer, vocab, learning_rate, epoch):
+def saveCheckPoint(model, optimizer, vocab, step):
     state = {"model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
-            "learning_rate": learning_rate,
+            "step": step,
             "vocab": vocab}
     path = "model-" + str(epoch) + "-" + datetime.datetime.now().strftime(
             "%Y-%m-%d-%H-%M")
@@ -206,12 +206,7 @@ def saveCheckPoint(model, optimizer, vocab, learning_rate, epoch):
     logger.info("saving model...")
     torch.save(state, path)
 
-#     with open(path + "-vocab", "wb") as output:
-#         pickle.dump(vocab, output)
-
 def loadCheckPoint(path):
-#     with open(path + "-vocab", "rb") as _input:
-#         vocab = pickle.load(_input)
 
     state = torch.load(path)
     vocab = state["vocab"]
@@ -223,20 +218,21 @@ def loadCheckPoint(path):
             weight_decay = hyper_params.weight_decay)
     model.load_state_dict(state["model"])
     optimizer.load_state_dict(state["optimizer"])
-    learning_rate = state["learning_rate"]
+    step = state["step"]
 
-    return model, optimizer, vocab, learning_rate
+    return model, optimizer, vocab, step
 
-model, optimizer, learning_rate = None, None, None
+model, optimizer, step = None, None, None
 if configs.model_file is None:
     model = lm_module.TransformerLm(embedding_table, len(vocab),
             configs.MAX_LEN_FOR_POSITIONAL_ENCODING).\
                     to( device = configs.device)
     optimizer = optim.Adam(model.parameters(), lr = 1e-3,
             weight_decay = hyper_params.weight_decay)
+    step = 0
 else:
     logger.info("loading %s...", configs.model_file)
-    model, optimizer, vocab, learning_rate = loadCheckPoint(configs.model_file)
+    model, optimizer, vocab, step = loadCheckPoint(configs.model_file)
 
 def buildDatasetAndGenerator(samples, stoi, vocab_len):
     training_set = buildDataset(samples, stoi, vocab_len)
@@ -302,7 +298,6 @@ def evaluate(model, samples):
 stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_ppl = 1e100
-step = 0
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 2:
         break
