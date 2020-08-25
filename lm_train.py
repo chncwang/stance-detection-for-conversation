@@ -266,20 +266,24 @@ def evaluate(model, samples):
             evaluation_loader_params = {
                     "batch_size": configs.evaluation_batch_size,
                     "shuffle": False }
+            logger.debug("evaluation_generator...")
             evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
                 **evaluation_loader_params)
             loss_sum = 0.0
             dataset_len_sum = 0
             for src_tensor, tgt_tensor, src_key_padding_mask, lens in\
-                    training_generator:
+                    evaluation_generator:
+                logger.debug("src_tensor.to...")
                 src_tensor = src_tensor.to(device = configs.device)
                 logger.debug("src_tensor size:%s tgt_tensor size:%s",
                         src_tensor.size(), tgt_tensor.size())
-                logger.debug("lens:%s", lens)
+                logger.debug("predicted...")
                 predicted = model(src_tensor, lens, src_key_padding_mask)
+                logger.debug("tgt_tensor...")
                 tgt_tensor = tgt_tensor.to(device = configs.device)
                 ids_list = []
                 len_sum = 0
+                logger.debug("loop...")
                 for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
                     sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
                     length = lens[i]
@@ -288,7 +292,9 @@ def evaluate(model, samples):
                             [length, tgt_tensor.size()[1] - length], 0)[0]
                     ids_list.append(non_padded)
                 ids_tuple = tuple(ids_list)
+                logger.debug("cat...")
                 concated = torch.cat(ids_tuple)
+                logger.debug("loss...")
                 loss = nn.NLLLoss()(predicted, concated)
                 loss_sum += loss * len_sum
                 dataset_len_sum += len_sum
@@ -383,6 +389,7 @@ for epoch_i in itertools.count(0):
             logger.info("ppl:%f acc:%f correct:%d total:%d", ppl,
                     float(total_hit_count) / total_token_count,
                     total_hit_count, total_token_count)
+        break # TODO
 
     logger.debug("stoi len:%d", len(vocab.stoi))
 
