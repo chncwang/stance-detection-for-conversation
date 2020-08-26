@@ -35,7 +35,8 @@ class TransformerLm(nn.Module):
         self.embedding_to_word_id = embedding_to_word_id
         self.log_softmax = nn.LogSoftmax(1)
 
-    def forward(self, sentence_tensor, sentence_lens, src_key_padding_mask):
+    def forward(self, sentence_tensor, sentence_lens, src_key_padding_mask,
+            prediction_position_tensors):
 
         logger.debug("src_key_padding_mask size:%s",
                 src_key_padding_mask.size())
@@ -55,32 +56,24 @@ class TransformerLm(nn.Module):
         self.dropout(hiddens)
         logger.debug("hiddens size:%s", hiddens.size())
         hiddens = hiddens.permute(1, 0, 2)
-#         logger.debug("hiddens size:%s", hiddens.size())
-#         max_len = hiddens.size()[1]
-
-#         for idx, sent_hiddens in enumerate(hiddens):
-#             x = torch.FloatTensor([-math.inf] * hyper_params.hidden_dim *
-#                     (max_len - sentence_lens[idx])).\
-#                             view(max_len - sentence_lens[idx],
-#                                     hyper_params.hidden_dim)
-#             logger.debug("x size:%s hiddens[idx] size:%s len:%d", x.size(),
-#                     hiddens[idx].size(), sentence_lens[idx])
-#             sent_hiddens[sentence_lens[idx]:] = x
-
-#         logger.debug("hiddens:%s", hiddens)
-#         logger.debug("hiddens size:%s", hiddens.size())
         decoder_embeddings = self.hidden_to_embedding(hiddens)
         word_ids = self.embedding_to_word_id(decoder_embeddings)
-        
-        len_list = sentence_lens.tolist()
-        len_sum = sum(len_list)
-        len_max = sentence_tensor.size()[1]
+
+#         len_max = sentence_tensor.size()[1]
         to_cat_list = []
-        for idx, (vector, length) in enumerate(zip(torch.split(word_ids, 1),
-                sentence_lens.tolist())):
-            vector = vector.reshape(vector.size()[1], vector.size()[2])
-            t = torch.split(vector, [length, len_max - length])
-            to_cat_list.append(t[0])
+#         for idx, (vector, length) in enumerate(zip(torch.split(word_ids, 1),
+#                 sentence_lens.tolist())):
+#             vector = vector.reshape(vector.size()[1], vector.size()[2])
+#             t = torch.split(vector, [length, len_max - length])
+#             to_cat_list.append(t[0])
+#         to_cat_tuple = tuple(to_cat_list)
+#         concated = torch.cat(to_cat_tuple, 0)
+
+        for i, prediction_position_tensor in enumerate(
+                prediction_position_tensors):
+            word_ids_of_sentence = word_ids[i]
+            vectors = word_ids_of_sentence[prediction_position_tensor]
+            to_cat_list.append(vectors)
         to_cat_tuple = tuple(to_cat_list)
         concated = torch.cat(to_cat_tuple, 0)
 

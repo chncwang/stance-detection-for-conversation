@@ -152,48 +152,55 @@ def pad_batch(word_ids_arr, lenghs):
     return tensor
 
 def applyLangMask(ids_arr, mask_id, vocab_size):
+    prediction_positions_arr = [None] * len(ids_arr)
+
+    logger.debug("ids_arr len:%d", len(ids_arr))
     for ids_arr_i, ids in enumerate(ids_arr):
         if ids_arr_i % 10000 == 0:
             logger.info("applying mask... %f", float(ids_arr_i) / len(ids_arr))
         for i in range(len(ids)):
             r = random.random()
-            if r < 0.12:
-                ids[i] = mask_id
-            elif r < 0.135:
-                ids[i] = random.randint(0, vocab_size - 1)
+            l = []
+            if r < 0.15:
+                l.append(i)
+                if r < 0.12:
+                    ids[i] = mask_id
+                elif r < 0.135:
+                    ids[i] = random.randint(0, vocab_size - 1)
+        prediction_positions_arr[ids_arr_i] = torch.LongTensor(l)
+
+    return prediction_positions_arr
+
+def targetIdsList(src_sentence_ids_arr, prediction_positions_arr):
+    target_ids_arr = [None] * len(src_sentence_ids_arr)
+    for i, (ids, positions) in enumerate(zip(src_sentence_ids_arr,
+            prediction_positions_arr)):
+        logger.debug("positions:%s", positions)
+        target_ids = torch.LongTensor([ids[p] for p in positions])
+        target_ids_arr[i] = target_ids
+    return target_ids_arr
 
 def buildDataset(samples, stoi, vocab_len):
-    logger.debug("stoi len:%d", len(stoi))
     words_arr = [s.split(" ") for s in samples]
 
-    logger.debug("stoi len:%d", len(stoi))
     logger.info("transfering words to ids...")
-    logger.debug("stoi len:%d", len(stoi))
     src_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in\
             words_arr]
-    logger.debug("stoi len:%d", len(stoi))
     mask_id = stoi["<mask>"]
-    logger.debug("stoi len:%d", len(stoi))
-    applyLangMask(src_sentences_indexes_arr, mask_id, vocab_len)
-    logger.debug("stoi len:%d", len(stoi))
-#     sep_id = stoi["<sep>"]
-#     logger.debug("sep_id:%d", sep_id)
-    tgt_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in\
-            words_arr]
-    logger.debug("stoi len:%d", len(stoi))
-#     tgt_sentences_indexes_arr = [[sep_id for x in s] for s in words_arr]
+    prediction_positions_arr = applyLangMask(src_sentences_indexes_arr,
+            mask_id, vocab_len)
+    logger.debug("prediction_positions_arr len:%d",
+            len(prediction_positions_arr))
     sentence_lens = [len(s) for s in words_arr]
-    logger.debug("stoi len:%d", len(stoi))
     src_key_padding_mask = utils.srcMask(src_sentences_indexes_arr,
             sentence_lens)
-    logger.debug("stoi len:%d", len(stoi))
     src_sentence_tensor = pad_batch(src_sentences_indexes_arr, sentence_lens)
-    logger.debug("stoi len:%d", len(stoi))
-    tgt_sentence_tensor = pad_batch(tgt_sentences_indexes_arr, sentence_lens)
-    logger.debug("stoi len:%d", len(stoi))
+    tgt_ids_arr = targetIdsList(src_sentences_indexes_arr,
+            prediction_positions_arr)
+    logger.debug("tgt_ids_arr len:%d", len(tgt_ids_arr))
 
-    return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
-            src_key_padding_mask, sentence_lens)
+    return dataset.LmDataset(src_sentence_tensor, tgt_ids_arr,
+            src_key_padding_mask, prediction_positions_arr, sentence_lens)
 
 def saveCheckPoint(model, optimizer, vocab, step, epoch):
     state = {"model": model.state_dict(),
@@ -313,8 +320,8 @@ for epoch_i in itertools.count(0):
             len(training_samples) / hyper_params.batch_size)
     total_token_count = 0
     total_hit_count = 0
-    for src_tensor, tgt_tensor, src_key_padding_mask, lens in\
-            training_generator:
+    for src_tensor, tgt_ids, src_key_padding_mask, prediction_positions_arr,\
+            lens in training_generator:
         step += 1
         batch_i += 1
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
@@ -338,7 +345,8 @@ for epoch_i in itertools.count(0):
 
         model.zero_grad()
         src_tensor = src_tensor.to(device = configs.device)
-        predicted = model(src_tensor, lens, src_key_padding_mask)
+        predicted = model(src_tensor, lens, src_key_padding_mask,
+                prediction_positions)
         logger.debug("predicted size:%s", predicted.size())
         logger.debug("original predicted:%s", predicted)
         tgt_tensor = tgt_tensor.to(device = configs.device)

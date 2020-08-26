@@ -45,17 +45,20 @@ def readLmSentences(path, posts, responses, rate = 1.0):
     return sentences
 
 class LmDataset(torch.utils.data.Dataset):
-    def __init__(self, src_sentence_tensor, tgt_sentence_tensor,
+    def __init__(self, src_sentence_tensor, tgt_ids_arr,
             src_key_padding_mask,
+            prediction_positions_arr,
             sentence_lens):
         self.src_sentence_tensor = src_sentence_tensor
-        self.tgt_sentence_tensor = tgt_sentence_tensor
+        self.tgt_ids_arr = tgt_ids_arr
         self.src_key_padding_mask = src_key_padding_mask
+        self.prediction_positions_arr = prediction_positions_arr
         self.sentence_lens = sentence_lens
 
     def __len__(self):
         return len(self.sentence_lens)
 
     def __getitem__(self, idx):
-        return self.src_sentence_tensor[idx], self.tgt_sentence_tensor[idx],\
-                self.src_key_padding_mask[idx], self.sentence_lens[idx]
+        return self.src_sentence_tensor[idx], self.tgt_ids_arr[idx],\
+                self.src_key_padding_mask[idx],\
+                self.prediction_positions_arr[idx], self.sentence_lens[idx]
