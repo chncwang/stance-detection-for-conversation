@@ -280,38 +280,28 @@ def evaluate(model, samples):
             logger.debug("vocab len:%d", len(vocab))
             logger.debug("stoi len:%d", len(vocab.stoi))
             evaluation_loader_params = {
-                    "batch_size": configs.evaluation_batch_size,
+                    "batch_size": int(max(1, hyper_params.batch_size / 4)),
                     "shuffle": False }
             logger.debug("evaluation_generator...")
             evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
                 **evaluation_loader_params)
             loss_sum = 0.0
             dataset_len_sum = 0
-            for src_tensor, tgt_tensor, src_key_padding_mask, lens in\
-                    evaluation_generator:
+            for src_tensor, tgt_tensor, src_key_padding_mask,\
+                    prediction_positions_arr, lens in evaluation_generator:
                 logger.debug("src_tensor.to...")
                 src_tensor = src_tensor.to(device = configs.device)
                 logger.debug("src_tensor size:%s tgt_tensor size:%s",
                         src_tensor.size(), tgt_tensor.size())
                 logger.debug("predicted...")
-                predicted = model(src_tensor, lens, src_key_padding_mask)
+                predicted = model(src_tensor, lens, src_key_padding_mask,
+                        prediction_positions_arr)
                 logger.debug("tgt_tensor...")
+                tgt_tensor = tgt_tensor[prediction_positions_arr]
                 tgt_tensor = tgt_tensor.to(device = configs.device)
-                ids_list = []
-                len_sum = 0
-                logger.debug("loop...")
-                for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
-                    sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
-                    length = lens[i]
-                    len_sum += length
-                    non_padded = torch.split(sentence_ids,
-                            [length, tgt_tensor.size()[1] - length], 0)[0]
-                    ids_list.append(non_padded)
-                ids_tuple = tuple(ids_list)
-                logger.debug("cat...")
-                concated = torch.cat(ids_tuple)
-                logger.debug("loss...")
-                loss = nn.NLLLoss()(predicted, concated)
+                loss = nn.NLLLoss()(predicted, tgt_tensor)
+                logger.debug("tgt_tensor size:%s", tgt_tensor.size())
+                len_sum = len(tgt_tensor)
                 loss_sum += loss * len_sum
                 dataset_len_sum += len_sum
     model.train()
@@ -384,8 +374,15 @@ for epoch_i in itertools.count(0):
                 if b:
                     first_len += 1
             words = [vocab.itos[x] for x in predicted_idx[: first_len]]
-            word_ids = [str(x) for x in predicted_idx[: first_len]]
-            logger.info("predicted:%s", " ".join(words))
+            first_tensor = src_tensor[0]
+            src_words = [vocab.itos[x] for x in src_tensor[0].tolist()\
+                    [: lens[0]]]
+            words_i = 0
+            for i, w in enumerate(src_words):
+                if prediction_positions[i]:
+                    src_words[i] = words[words_i]
+                    words_i += 1
+            logger.info("predicted:%s", " ".join(src_words))
         logger.debug("predicted_idx len:%d", len(predicted_idx))
         logger.debug("tgt_tensor size:%s", tgt_tensor.size())
         logger.debug("prediction_positions_arr size:%s",
