@@ -53,28 +53,11 @@ class TransformerLm(nn.Module):
         logger.debug("word_vectors size:%s", word_vectors.size())
         hiddens = self.transformer(word_vectors,
                 src_key_padding_mask = src_key_padding_mask)
-        self.dropout(hiddens)
-        logger.debug("hiddens size:%s", hiddens.size())
         hiddens = hiddens.permute(1, 0, 2)
+        logger.debug("hiddens size:%s", hiddens.size())
+        hiddens = hiddens[prediction_position_tensors]
+        self.dropout(hiddens)
         decoder_embeddings = self.hidden_to_embedding(hiddens)
         word_ids = self.embedding_to_word_id(decoder_embeddings)
 
-#         len_max = sentence_tensor.size()[1]
-        to_cat_list = []
-#         for idx, (vector, length) in enumerate(zip(torch.split(word_ids, 1),
-#                 sentence_lens.tolist())):
-#             vector = vector.reshape(vector.size()[1], vector.size()[2])
-#             t = torch.split(vector, [length, len_max - length])
-#             to_cat_list.append(t[0])
-#         to_cat_tuple = tuple(to_cat_list)
-#         concated = torch.cat(to_cat_tuple, 0)
-
-        for i, prediction_position_tensor in enumerate(
-                prediction_position_tensors):
-            word_ids_of_sentence = word_ids[i]
-            vectors = word_ids_of_sentence[prediction_position_tensor]
-            to_cat_list.append(vectors)
-        to_cat_tuple = tuple(to_cat_list)
-        concated = torch.cat(to_cat_tuple, 0)
-
-        return self.log_softmax(concated)
+        return self.log_softmax(word_ids)

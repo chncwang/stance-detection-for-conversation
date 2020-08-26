@@ -151,25 +151,32 @@ def pad_batch(word_ids_arr, lenghs):
         tensor[idx, :seq_len] = x
     return tensor
 
-def applyLangMask(ids_arr, mask_id, vocab_size):
+def applyLangMask(ids_arr, mask_id, vocab_size, max_len):
     prediction_positions_arr = [None] * len(ids_arr)
 
     logger.debug("ids_arr len:%d", len(ids_arr))
     for ids_arr_i, ids in enumerate(ids_arr):
         if ids_arr_i % 10000 == 0:
             logger.info("applying mask... %f", float(ids_arr_i) / len(ids_arr))
-        for i in range(len(ids)):
+        l = []
+        for i in range(max_len):
             r = random.random()
-            l = []
+            if i >= len(ids):
+                l.append(False)
+                continue
             if r < 0.15:
-                l.append(i)
+                l.append(True)
                 if r < 0.12:
                     ids[i] = mask_id
                 elif r < 0.135:
                     ids[i] = random.randint(0, vocab_size - 1)
-        prediction_positions_arr[ids_arr_i] = torch.LongTensor(l)
+            else:
+                l.append(False)
+        prediction_positions_arr[ids_arr_i] = l
 
-    return prediction_positions_arr
+    result = torch.BoolTensor(prediction_positions_arr)
+    logger.debug("result size:%s", result.size())
+    return result
 
 def targetIdsList(src_sentence_ids_arr, prediction_positions_arr):
     target_ids_arr = [None] * len(src_sentence_ids_arr)
@@ -186,20 +193,22 @@ def buildDataset(samples, stoi, vocab_len):
     logger.info("transfering words to ids...")
     src_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in\
             words_arr]
+    tgt_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in\
+            words_arr]
     mask_id = stoi["<mask>"]
+    sentence_lens = [len(s) for s in words_arr]
     prediction_positions_arr = applyLangMask(src_sentences_indexes_arr,
-            mask_id, vocab_len)
+            mask_id, vocab_len, max(sentence_lens))
     logger.debug("prediction_positions_arr len:%d",
             len(prediction_positions_arr))
-    sentence_lens = [len(s) for s in words_arr]
+    logger.debug("prediction_positions_arr size:%s",
+                prediction_positions_arr.size())
     src_key_padding_mask = utils.srcMask(src_sentences_indexes_arr,
             sentence_lens)
     src_sentence_tensor = pad_batch(src_sentences_indexes_arr, sentence_lens)
-    tgt_ids_arr = targetIdsList(src_sentences_indexes_arr,
-            prediction_positions_arr)
-    logger.debug("tgt_ids_arr len:%d", len(tgt_ids_arr))
+    tgt_sentence_tensor = pad_batch(tgt_sentences_indexes_arr, sentence_lens)
 
-    return dataset.LmDataset(src_sentence_tensor, tgt_ids_arr,
+    return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor,
             src_key_padding_mask, prediction_positions_arr, sentence_lens)
 
 def saveCheckPoint(model, optimizer, vocab, step, epoch):
@@ -320,8 +329,10 @@ for epoch_i in itertools.count(0):
             len(training_samples) / hyper_params.batch_size)
     total_token_count = 0
     total_hit_count = 0
-    for src_tensor, tgt_ids, src_key_padding_mask, prediction_positions_arr,\
-            lens in training_generator:
+    for src_tensor, tgt_tensor, src_key_padding_mask,\
+            prediction_positions_arr, lens in training_generator:
+        logger.debug("prediction_positions_arr size:%s",
+                prediction_positions_arr.size())
         step += 1
         batch_i += 1
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
@@ -346,31 +357,17 @@ for epoch_i in itertools.count(0):
         model.zero_grad()
         src_tensor = src_tensor.to(device = configs.device)
         predicted = model(src_tensor, lens, src_key_padding_mask,
-                prediction_positions)
+                prediction_positions_arr)
         logger.debug("predicted size:%s", predicted.size())
         logger.debug("original predicted:%s", predicted)
         tgt_tensor = tgt_tensor.to(device = configs.device)
         logger.debug("tgt_tensor size:%s", tgt_tensor.size())
-
-        ids_list = []
-        first_len = 0
-        for i, sentence_ids in enumerate(torch.split(tgt_tensor, 1)):
-            sentence_ids = sentence_ids.reshape(sentence_ids.size()[1])
-            logger.debug("sentence_ids size:%s", sentence_ids.size())
-            length = lens[i]
-            logger.debug("length:%d", length)
-            if i == 0:
-                first_len = length
-            non_padded = torch.split(sentence_ids,
-                    [length, tgt_tensor.size()[1] - length], 0)[0]
-            logger.debug("non_padded size:%s", non_padded.size())
-            ids_list.append(non_padded)
-        ids_tuple = tuple(ids_list)
-        concated = torch.cat(ids_tuple)
-        logger.debug("concated:%s", concated)
-        logger.debug("concated size:%s predicted size:%s", concated.size(),
-                predicted.size())
-        loss = nn.NLLLoss()(predicted, concated)
+        tgt_tensor = tgt_tensor[prediction_positions_arr]
+        logger.debug("prediction_positions_arr size:%s",
+                prediction_positions_arr.size())
+        logger.debug("prediction_positions_arr:%s", prediction_positions_arr)
+        logger.debug("tgt_tensor size:%s", tgt_tensor.size())
+        loss = nn.NLLLoss()(predicted, tgt_tensor)
         loss.backward()
 
         if hyper_params.clip_grad is not None:
@@ -381,11 +378,19 @@ for epoch_i in itertools.count(0):
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idx = predicted_idx.to(device = CPU_DEVICE).tolist()
         if should_print:
+            prediction_positions = prediction_positions_arr[0]
+            first_len = 0
+            for b in prediction_positions.tolist():
+                if b:
+                    first_len += 1
             words = [vocab.itos[x] for x in predicted_idx[: first_len]]
             word_ids = [str(x) for x in predicted_idx[: first_len]]
             logger.info("predicted:%s", " ".join(words))
         logger.debug("predicted_idx len:%d", len(predicted_idx))
-        ground_truth = concated.to(device = CPU_DEVICE).tolist()
+        logger.debug("tgt_tensor size:%s", tgt_tensor.size())
+        logger.debug("prediction_positions_arr size:%s",
+                prediction_positions_arr.size())
+        ground_truth = tgt_tensor.tolist()
         logger.debug("ground_truth len:%d", len(ground_truth))
         token_count_in_batch = len(ground_truth)
         total_token_count += token_count_in_batch
