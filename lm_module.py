@@ -20,9 +20,10 @@ class TransformerLm(nn.Module):
         self.embedding = embedding
         self.input_linear = nn.Linear(hyper_params.word_dim,
                 hyper_params.hidden_dim)
-        encoder_layer = nn.TransformerEncoderLayer(hyper_params.hidden_dim, 8)
+        encoder_layer = nn.TransformerEncoderLayer(hyper_params.hidden_dim, 8,
+                activation = "gelu")
         self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
-        self.postional_encoding = positional.PositionalEncoding(
+        self.positional_encoding = positional.PositionalEncoding(
                 hyper_params.hidden_dim, dropout = hyper_params.dropout,
                 max_len = max_len_for_positional_encoding)
         self.transformer = nn.TransformerEncoder(encoder_layer,
@@ -31,7 +32,7 @@ class TransformerLm(nn.Module):
                 hyper_params.word_dim)
         embedding_to_word_id = nn.Linear(hyper_params.word_dim, vocab_len,
                 bias = False)
-        embedding_to_word_id.weight = embedding.weight
+#         embedding_to_word_id.weight = embedding.weight
         self.embedding_to_word_id = embedding_to_word_id
         self.log_softmax = nn.LogSoftmax(1)
 
@@ -48,9 +49,10 @@ class TransformerLm(nn.Module):
                 to(device = configs.device)
         word_vectors = self.input_linear(word_vectors)
         word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
-        word_vectors = self.postional_encoding(word_vectors)
         word_vectors = word_vectors.permute(1, 0, 2)
         logger.debug("word_vectors size:%s", word_vectors.size())
+        word_vectors = self.positional_encoding(word_vectors)
+#         word_vectors = word_vectors.permute(1, 0, 2)
         hiddens = self.transformer(word_vectors,
                 src_key_padding_mask = src_key_padding_mask)
         hiddens = hiddens.permute(1, 0, 2)

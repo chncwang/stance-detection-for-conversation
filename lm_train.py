@@ -310,9 +310,10 @@ def evaluate(model, samples):
 stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_ppl = 1e100
+ppl = 0
 for epoch_i in itertools.count(0):
-    if stagnation_epochs >= 2:
-        break
+#     if stagnation_epochs >= 2:
+#         break
     batch_i = -1
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
@@ -328,6 +329,7 @@ for epoch_i in itertools.count(0):
         should_print = batch_i * hyper_params.batch_size % 1000 == 0
         lr = math.pow(hyper_params.hidden_dim, -0.5) * min(pow(step, -0.5),
                 step * pow(hyper_params.warm_up_steps, -1.5))
+        lr *= hyper_params.learning_rate
         if should_print:
             logger.info("lr:%f", lr)
         for g in optimizer.param_groups:
@@ -394,17 +396,17 @@ for epoch_i in itertools.count(0):
         loss_sum += loss * token_count_in_batch
         acc = metrics.accuracy_score(ground_truth, predicted_idx)
         total_hit_count += acc * token_count_in_batch
-        if should_print:
-            ppl = math.exp(loss_sum / total_token_count)
-            logger.info("ppl:%f acc:%f correct:%d total:%d", ppl,
-                    float(total_hit_count) / total_token_count,
-                    total_hit_count, total_token_count)
+        ppl = math.exp(loss_sum / total_token_count)
+    logger.info("ppl:%f acc:%f correct:%d total:%d", ppl,
+            float(total_hit_count) / total_token_count, total_hit_count,
+            total_token_count)
     logger.debug("stoi len:%d", len(vocab.stoi))
 
     logger.debug("vocab len:%d", len(vocab))
     logger.debug("stoi len:%d", len(vocab.stoi))
     logger.info("evaluating dev set...")
-    dev_ppl = evaluate(model, dev_samples)
+#     dev_ppl = evaluate(model, dev_samples)
+    dev_ppl = 1
     logger.info("dev ppl:%s", dev_ppl)
 
     if dev_ppl < best_dev_ppl:
@@ -413,7 +415,7 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", best_dev_ppl)
         stagnation_epochs = 0
-        saveCheckPoint(model, optimizer, vocab, lr, epoch_i)
+#         saveCheckPoint(model, optimizer, vocab, lr, epoch_i)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
@@ -421,5 +423,5 @@ for epoch_i in itertools.count(0):
 
     logger.debug("vocab len:%d", len(vocab))
     logger.debug("stoi len:%d", len(vocab.stoi))
-    training_set, training_generator = buildDatasetAndGenerator(
-            training_samples, vocab.stoi, len(vocab))
+#     training_set, training_generator = buildDatasetAndGenerator(
+#             training_samples, vocab.stoi, len(vocab))

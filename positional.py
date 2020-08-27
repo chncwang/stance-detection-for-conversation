@@ -2,6 +2,9 @@ import torch
 import math
 import torch.nn as nn
 import torch.autograd as autograd
+import utils
+
+logger = utils.getLogger(__file__)
 
 class PositionalEncoding(nn.Module):
     r"""Inject some information about the relative or absolute position of the tokens
@@ -42,7 +45,11 @@ class PositionalEncoding(nn.Module):
         Examples:
             >>> output = pos_encoder(x)
         """
-
-        x = x + self.pe[:x.size(0), :]
+        p = self.pe[:x.size(0), :]
+        logger.debug("p size:%s", p.size())
+        logger.debug("p:%s", p)
+        logger.debug("x size:%s", x.size())
+        logger.debug("x:%s", x)
+        x = x + p
         return self.dropout(x)
 

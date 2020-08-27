@@ -15,3 +15,4 @@ logging.basicConfig(format = FORMAT,
 # getLogger("dataset").setLevel(DEBUG)
 # getLogger("lm_train").setLevel(DEBUG)
 # getLogger("lm_module").setLevel(DEBUG)
+# getLogger("positional").setLevel(DEBUG)

@@ -194,6 +194,7 @@ for epoch_i in itertools.count(0):
         step += 1
         lr = math.pow(hyper_params.hidden_dim, -0.5) * min(pow(step, -0.5),
                 step * pow(hyper_params.warm_up_steps, -1.5))
+        lr *= hyper_params.learning_rate
 
         should_print = batch_i * hyper_params.batch_size % 100 == 0
         if should_print:
