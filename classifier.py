@@ -25,7 +25,7 @@ class TransformerClassifier(nn.Module):
                 hyper_params.layer)
         self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3)
         self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
-        self.postional_encoding = positional.PositionalEncoding(
+        self.positional_encoding = positional.PositionalEncoding(
                 hyper_params.hidden_dim, dropout = hyper_params.dropout,
                 max_len = max_len_for_positional_encoding)
 
@@ -39,8 +39,8 @@ class TransformerClassifier(nn.Module):
                 to(device = configs.device)
         word_vectors = self.input_linear(word_vectors)
         word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
-        word_vectors = self.postional_encoding(word_vectors)
         word_vectors = word_vectors.permute(1, 0, 2)
+        word_vectors = self.positional_encoding(word_vectors)
         self.dropout(word_vectors)
         hiddens = self.transformer(word_vectors,
                 src_key_padding_mask = src_key_padding_mask)
