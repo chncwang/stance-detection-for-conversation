@@ -18,32 +18,26 @@ class TransformerClassifier(nn.Module):
     def __init__(self, embedding, max_len_for_positional_encoding):
         super(TransformerClassifier, self).__init__()
         self.embedding = embedding
-        self.input_linear = nn.Linear(hyper_params.word_dim,
-                hyper_params.hidden_dim)
+        self.input_linear = nn.Linear(hyper_params.word_dim, hyper_params.hidden_dim)
         encoder_layer = nn.TransformerEncoderLayer(hyper_params.hidden_dim, 8)
-        self.transformer = nn.TransformerEncoder(encoder_layer,
-                hyper_params.layer)
+        self.transformer = nn.TransformerEncoder(encoder_layer, hyper_params.layer)
         self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3)
         self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
-        self.positional_encoding = positional.PositionalEncoding(
-                hyper_params.hidden_dim, dropout = hyper_params.dropout,
-                max_len = max_len_for_positional_encoding)
+        self.positional_encoding = positional.PositionalEncoding(hyper_params.hidden_dim,
+                dropout = hyper_params.dropout, max_len = max_len_for_positional_encoding)
 
     def forward(self, sentence_tensor, sentence_lens, src_key_padding_mask):
-        logger.debug("src_key_padding_mask size:%s",
-                src_key_padding_mask.size())
+        logger.debug("src_key_padding_mask size:%s", src_key_padding_mask.size())
         src_key_padding_mask = src_key_padding_mask.to(device = configs.device)
         logger.debug("sentence_tensor size:%s", sentence_tensor.size())
         batch_size = sentence_tensor.size()[0]
-        word_vectors = self.embedding(sentence_tensor).\
-                to(device = configs.device)
+        word_vectors = self.embedding(sentence_tensor).to(device = configs.device)
         word_vectors = self.input_linear(word_vectors)
         word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
         word_vectors = word_vectors.permute(1, 0, 2)
         word_vectors = self.positional_encoding(word_vectors)
         self.dropout(word_vectors)
-        hiddens = self.transformer(word_vectors,
-                src_key_padding_mask = src_key_padding_mask)
+        hiddens = self.transformer(word_vectors, src_key_padding_mask = src_key_padding_mask)
         self.dropout(hiddens)
         logger.debug("hiddens size:%s", hiddens.size())
         hiddens = hiddens.permute(1, 0, 2)
@@ -52,11 +46,10 @@ class TransformerClassifier(nn.Module):
 
         for idx, sent_hiddens in enumerate(hiddens):
             x = torch.FloatTensor([-math.inf] * hyper_params.hidden_dim *
-                    (max_len - sentence_lens[idx])).\
-                            view(max_len - sentence_lens[idx],
+                    (max_len - sentence_lens[idx])).view(max_len - sentence_lens[idx],
                                     hyper_params.hidden_dim)
-            logger.debug("x size:%s hiddens[idx] size:%s len:%d", x.size(),
-                    hiddens[idx].size(), sentence_lens[idx])
+            logger.debug("x size:%s hiddens[idx] size:%s len:%d", x.size(), hiddens[idx].size(),
+                    sentence_lens[idx])
             sent_hiddens[sentence_lens[idx]:] = x
 
         hiddens = hiddens.permute(0, 2, 1)

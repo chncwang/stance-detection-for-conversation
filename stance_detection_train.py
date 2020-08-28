@@ -39,8 +39,7 @@ printHyperParams()
 torch.manual_seed(hyper_params.seed)
 
 posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts")
-responses = dataset.readConversationSentences(
-        "/var/wqs/weibo_dialogue/responses")
+responses = dataset.readConversationSentences("/var/wqs/weibo_dialogue/responses")
 
 def readSamples(path):
     return dataset.readSamples(path, posts, responses)
@@ -49,16 +48,12 @@ def maxLen(samples):
     return max([len(x.post) + len(x.response) for x in samples]) + 1
 
 training_samples = readSamples(
-        "/var/wqs/conversation-stance-corpus/overall_filtered/"\
-                "overall_filtered_train")
+        "/var/wqs/conversation-stance-corpus/overall_filtered/overall_filtered_train")
 dev_samples = readSamples(
-        "/var/wqs/conversation-stance-corpus/overall_filtered/"\
-                "overall_filtered_dev")
+        "/var/wqs/conversation-stance-corpus/overall_filtered/overall_filtered_dev")
 test_samples = readSamples(
-        "/var/wqs/conversation-stance-corpus/overall_filtered/"\
-                "overall_filtered_test")
-g_max_len = max([maxLen(training_samples), maxLen(dev_samples),
-        maxLen(test_samples)])
+        "/var/wqs/conversation-stance-corpus/overall_filtered/overall_filtered_test")
+g_max_len = max([maxLen(training_samples), maxLen(dev_samples), maxLen(test_samples)])
 logger.info("max len of the whole dataset:%d", g_max_len)
 
 to_build_vocb_samples = None
@@ -91,8 +86,7 @@ for idx, sample in enumerate(to_build_vocb_samples):
     all_words_count += t[1]
 
 logger.info("oov:%f", oov_count / float(all_words_count))
-word_vectors = torchtext.vocab.Vectors(
-        "/var/wqs/cn_embeddings/sgns.weibo.bigram-char")
+word_vectors = torchtext.vocab.Vectors("/var/wqs/cn_embeddings/sgns.weibo.bigram-char")
 
 if not hyper_params.embedding_tuning:
     for k in counter.keys():
@@ -125,16 +119,13 @@ def buildDataset(samples, stoi):
     src_key_padding_mask = utils.srcMask(sentences_indexes_arr, sentence_lens)
     label_tensor = torch.LongTensor(labels)
 
-    return dataset.StanceDetectionDataset(sentence_tensor, sentence_lens,
-            src_key_padding_mask, label_tensor)
+    return dataset.StanceDetectionDataset(sentence_tensor, sentence_lens, src_key_padding_mask,
+            label_tensor)
 
 training_set = buildDataset(training_samples, vocab.stoi)
 
-data_loader_params = {
-        "batch_size": hyper_params.batch_size,
-        "shuffle": True }
-training_generator = torch.utils.data.DataLoader(training_set,
-        **data_loader_params)
+data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
+training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)
 
 if g_max_len >= configs.MAX_LEN_FOR_POSITIONAL_ENCODING:
     logger.error("g_max_len:%d MAX_LEN_FOR_POSITIONAL_ENCODING:%d", g_max_len,
@@ -150,8 +141,7 @@ def evaluate(model, samples):
     model.eval()
     with torch.no_grad():
         evaluation_set = buildDataset(samples, vocab.stoi)
-        evaluation_loader_params = {
-                "batch_size": configs.evaluation_batch_size,
+        evaluation_loader_params = { "batch_size": configs.evaluation_batch_size,
                 "shuffle": False }
         evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
             **evaluation_loader_params)
@@ -160,20 +150,17 @@ def evaluate(model, samples):
         for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor\
                 in evaluation_generator:
             sentence_tensor = sentence_tensor.to(device = configs.device)
-            predicted = model(sentence_tensor, sentence_lens,
-                    src_key_padding_mask)
+            predicted = model(sentence_tensor, sentence_lens, src_key_padding_mask)
             predicted_idx = torch.max(predicted, 1)[1]
-            predicted_idxes += list(predicted_idx.to(
-                    device = CPU_DEVICE).data.int())
+            predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.int())
             ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
     model.train()
     return metrics.f1_score(ground_truths, predicted_idxes, average = None)
 
 step = 0
 
-optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate,
-        betas = (0.9, 0.98), eps = 1e-9,
-        weight_decay = hyper_params.weight_decay)
+optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate, betas = (0.9, 0.98),
+        eps = 1e-9, weight_decay = hyper_params.weight_decay)
 
 stagnation_epochs = 0
 best_epoch_i = 0
@@ -188,13 +175,10 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
-    for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in\
-            training_generator:
+    for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in training_generator:
         batch_i += 1
         step += 1
-        lr = hyper_params.learning_rate *\
-                min(1, step / hyper_params.warm_up_steps)
-#                 min(pow(hyper_params.warm_up_steps / step, 0.5),
+        lr = hyper_params.learning_rate * min(1, step / hyper_params.warm_up_steps)
 
         should_print = batch_i * hyper_params.batch_size % 100 == 0
         if should_print:
@@ -209,8 +193,7 @@ for epoch_i in itertools.count(0):
         loss = nn.CrossEntropyLoss()(predicted, label_tensor)
         loss.backward()
         if hyper_params.clip_grad is not None:
-            nn.utils.clip_grad_norm_(model.parameters(),
-                    hyper_params.clip_grad)
+            nn.utils.clip_grad_norm_(model.parameters(), hyper_params.clip_grad)
         for g in optimizer.param_groups:
             g["lr"] = lr
         optimizer.step()
@@ -221,12 +204,11 @@ for epoch_i in itertools.count(0):
         loss_sum += loss
         if should_print:
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-            logger.info("acc:%f correct:%d total:%d", acc,
-                    acc * len(ground_truths), len(ground_truths))
+            logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
+                    len(ground_truths))
 
     acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-    logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
-            len(ground_truths))
+    logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths), len(ground_truths))
     logger.info("evaluating dev set...")
     dev_score = evaluate(model, dev_samples)
     logger.info("dev:%s", dev_score)
@@ -249,5 +231,5 @@ for epoch_i in itertools.count(0):
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
-    logger.info("best epoch:%d dev_macro:%f test_macro:%f", best_epoch_i,
-            best_dev_macro, best_test_macro)
+    logger.info("best epoch:%d dev_macro:%f test_macro:%f", best_epoch_i, best_dev_macro,
+            best_test_macro)

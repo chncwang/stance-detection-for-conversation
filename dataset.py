@@ -17,8 +17,7 @@ def readSamples(path, posts, responses):
             sample.toStance(x[2])) for x in fragments]
 
 class StanceDetectionDataset(torch.utils.data.Dataset):
-    def __init__(self, sentence_tensor, sentence_lengths, src_mask,
-            label_tensor):
+    def __init__(self, sentence_tensor, sentence_lengths, src_mask, label_tensor):
         self.sentence_tensor = sentence_tensor
         self.sentence_lengths = sentence_lengths
         self.src_mask = src_mask
@@ -28,8 +27,8 @@ class StanceDetectionDataset(torch.utils.data.Dataset):
         return len(self.label_tensor)
 
     def __getitem__(self, idx):
-        return self.sentence_tensor[idx], self.sentence_lengths[idx],\
-                self.src_mask[idx], self.label_tensor[idx]
+        return self.sentence_tensor[idx], self.sentence_lengths[idx], self.src_mask[idx],\
+                self.label_tensor[idx]
 
 def readLmSentences(path, posts, responses, rate = 1.0):
     lines = readLines(path)
@@ -45,10 +44,8 @@ def readLmSentences(path, posts, responses, rate = 1.0):
     return sentences
 
 class LmDataset(torch.utils.data.Dataset):
-    def __init__(self, src_sentence_tensor, tgt_ids_arr,
-            src_key_padding_mask,
-            prediction_positions_arr,
-            sentence_lens):
+    def __init__(self, src_sentence_tensor, tgt_ids_arr, src_key_padding_mask,
+            prediction_positions_arr, sentence_lens):
         self.src_sentence_tensor = src_sentence_tensor
         self.tgt_ids_arr = tgt_ids_arr
         self.src_key_padding_mask = src_key_padding_mask
@@ -60,5 +57,5 @@ class LmDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.src_sentence_tensor[idx], self.tgt_ids_arr[idx],\
-                self.src_key_padding_mask[idx],\
-                self.prediction_positions_arr[idx], self.sentence_lens[idx]
+                self.src_key_padding_mask[idx], self.prediction_positions_arr[idx],\
+                self.sentence_lens[idx]
