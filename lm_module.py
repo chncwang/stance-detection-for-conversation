@@ -32,7 +32,7 @@ class TransformerLm(nn.Module):
                 hyper_params.word_dim)
         embedding_to_word_id = nn.Linear(hyper_params.word_dim, vocab_len,
                 bias = False)
-#         embedding_to_word_id.weight = embedding.weight
+        embedding_to_word_id.weight = embedding.weight
         self.embedding_to_word_id = embedding_to_word_id
         self.log_softmax = nn.LogSoftmax(1)
 
@@ -52,7 +52,6 @@ class TransformerLm(nn.Module):
         word_vectors = word_vectors.permute(1, 0, 2)
         logger.debug("word_vectors size:%s", word_vectors.size())
         word_vectors = self.positional_encoding(word_vectors)
-#         word_vectors = word_vectors.permute(1, 0, 2)
         hiddens = self.transformer(word_vectors,
                 src_key_padding_mask = src_key_padding_mask)
         hiddens = hiddens.permute(1, 0, 2)
