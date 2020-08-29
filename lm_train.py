@@ -1,4 +1,5 @@
 import datetime
+import common
 import math
 import sys
 import torch
@@ -18,6 +19,7 @@ import imp
 import lm_module
 import pickle
 import random
+import check_point
 
 logger = utils.getLogger(__file__)
 
@@ -26,8 +28,6 @@ logger.info("torch version:%s", torch.__version__)
 hyper_params = imp.load_source("module.name", sys.argv[1])
 
 utils.printLmHyperParams(hyper_params)
-
-torch.manual_seed(hyper_params.seed)
 
 posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts-bpe")
 responses = dataset.readConversationSentences("/var/wqs/weibo_dialogue/responses-bpe")
@@ -104,43 +104,6 @@ if configs.model_file is None:
             embedding_table(torch.LongTensor([4]).to(device = configs.device)),
             embedding_table(torch.LongTensor([1]).to(device = configs.device)))
 
-def wordIndexes(words, stoi, vocab_len):
-    return [stoi[word] for word in words]
-
-def pad_batch(word_ids_arr, lenghs):
-    tensor = torch.ones(len(word_ids_arr), max(lenghs), dtype = int)
-    for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lenghs)):
-        x = torch.LongTensor(ids)
-        tensor[idx, :seq_len] = x
-    return tensor
-
-def applyLangMask(ids_arr, mask_id, vocab_size, max_len):
-    prediction_positions_arr = [None] * len(ids_arr)
-
-    logger.debug("ids_arr len:%d", len(ids_arr))
-    for ids_arr_i, ids in enumerate(ids_arr):
-        if ids_arr_i % 10000 == 0:
-            logger.info("applying mask... %f", float(ids_arr_i) / len(ids_arr))
-        l = []
-        for i in range(max_len):
-            r = random.random()
-            if i >= len(ids):
-                l.append(False)
-                continue
-            if r < 0.15:
-                l.append(True)
-                if r < 0.12:
-                    ids[i] = mask_id
-                elif r < 0.135:
-                    ids[i] = random.randint(0, vocab_size - 1)
-            else:
-                l.append(False)
-        prediction_positions_arr[ids_arr_i] = l
-
-    result = torch.BoolTensor(prediction_positions_arr)
-    logger.debug("result size:%s", result.size())
-    return result
-
 def targetIdsList(src_sentence_ids_arr, prediction_positions_arr):
     target_ids_arr = [None] * len(src_sentence_ids_arr)
     for i, (ids, positions) in enumerate(zip(src_sentence_ids_arr, prediction_positions_arr)):
@@ -148,47 +111,6 @@ def targetIdsList(src_sentence_ids_arr, prediction_positions_arr):
         target_ids = torch.LongTensor([ids[p] for p in positions])
         target_ids_arr[i] = target_ids
     return target_ids_arr
-
-def buildDataset(samples, stoi, vocab_len):
-    words_arr = [s.split(" ") for s in samples]
-
-    logger.info("transfering words to ids...")
-    src_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in words_arr]
-    tgt_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in words_arr]
-    mask_id = stoi["<mask>"]
-    sentence_lens = [len(s) for s in words_arr]
-    prediction_positions_arr = applyLangMask(src_sentences_indexes_arr, mask_id, vocab_len,
-            max(sentence_lens))
-    logger.debug("prediction_positions_arr len:%d", len(prediction_positions_arr))
-    logger.debug("prediction_positions_arr size:%s", prediction_positions_arr.size())
-    src_key_padding_mask = utils.srcMask(src_sentences_indexes_arr, sentence_lens)
-    src_sentence_tensor = pad_batch(src_sentences_indexes_arr, sentence_lens)
-    tgt_sentence_tensor = pad_batch(tgt_sentences_indexes_arr, sentence_lens)
-
-    return dataset.LmDataset(src_sentence_tensor, tgt_sentence_tensor, src_key_padding_mask,
-            prediction_positions_arr, sentence_lens)
-
-def saveCheckPoint(model, optimizer, vocab, step, epoch):
-    state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "step": step,
-            "vocab": vocab}
-    path = "model-" + str(epoch) + "-" + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
-    logger.info("path:%s", path)
-    logger.info("saving model...")
-    torch.save(state, path)
-
-def loadCheckPoint(path):
-
-    state = torch.load(path)
-    vocab = state["vocab"]
-    embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
-    model = lm_module.TransformerLm(embedding_table, len(vocab),
-            configs.MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
-    optimizer = optim.Adam(model.parameters(), lr = 1e-3, weight_decay = hyper_params.weight_decay)
-    model.load_state_dict(state["model"])
-    optimizer.load_state_dict(state["optimizer"])
-    step = state["step"]
-
-    return model, optimizer, vocab, step
 
 model, optimizer, step = None, None, None
 if configs.model_file is None:
@@ -198,11 +120,11 @@ if configs.model_file is None:
     step = 0
 else:
     logger.info("loading %s...", configs.model_file)
-    model, optimizer, vocab, step = loadCheckPoint(configs.model_file)
+    model, optimizer, vocab, step = check_point.loadCheckPoint(configs.model_file)
     step += 1
 
 def buildDatasetAndGenerator(samples, stoi, vocab_len):
-    training_set = buildDataset(samples, stoi, vocab_len)
+    training_set = dataset.buildLmDataset(samples, stoi, vocab_len)
 
     data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
     training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)
@@ -217,41 +139,6 @@ if PAD_ID != 1:
     sys.exit(1)
 
 CPU_DEVICE = torch.device("cpu")
-
-def evaluate(model, samples):
-    model.eval()
-    with torch.no_grad():
-        for i in range(10):
-            logger.debug("vocab len:%d", len(vocab))
-            logger.debug("stoi len:%d", len(vocab.stoi))
-            evaluation_set = buildDataset(samples, vocab.stoi, len(vocab))
-            logger.debug("vocab len:%d", len(vocab))
-            logger.debug("stoi len:%d", len(vocab.stoi))
-            evaluation_loader_params = { "batch_size": int(max(1, hyper_params.batch_size / 4)),
-                    "shuffle": False }
-            logger.debug("evaluation_generator...")
-            evaluation_generator = torch.utils.data.DataLoader(evaluation_set,
-                **evaluation_loader_params)
-            loss_sum = 0.0
-            dataset_len_sum = 0
-            for src_tensor, tgt_tensor, src_key_padding_mask, prediction_positions_arr, lens\
-                    in evaluation_generator:
-                logger.debug("src_tensor.to...")
-                src_tensor = src_tensor.to(device = configs.device)
-                logger.debug("src_tensor size:%s tgt_tensor size:%s", src_tensor.size(),
-                        tgt_tensor.size())
-                logger.debug("predicted...")
-                predicted = model(src_tensor, lens, src_key_padding_mask, prediction_positions_arr)
-                logger.debug("tgt_tensor...")
-                tgt_tensor = tgt_tensor[prediction_positions_arr]
-                tgt_tensor = tgt_tensor.to(device = configs.device)
-                loss = nn.NLLLoss()(predicted, tgt_tensor)
-                logger.debug("tgt_tensor size:%s", tgt_tensor.size())
-                len_sum = len(tgt_tensor)
-                loss_sum += loss * len_sum
-                dataset_len_sum += len_sum
-    model.train()
-    return math.exp(loss_sum / dataset_len_sum)
 
 stagnation_epochs = 0
 best_epoch_i = 0
@@ -343,7 +230,8 @@ for epoch_i in itertools.count(0):
         ppl = math.exp(loss_sum / total_token_count)
         if should_print:
             logger.info("ppl:%f acc:%f correct:%d total:%d", ppl,
-                    float(total_hit_count) / total_token_count, total_hit_count, total_token_count)
+                    float(total_hit_count) / total_token_count,
+                    total_hit_count, total_token_count)
     logger.info("ppl:%f acc:%f correct:%d total:%d", ppl,
             float(total_hit_count) / total_token_count, total_hit_count, total_token_count)
     logger.debug("stoi len:%d", len(vocab.stoi))
@@ -351,7 +239,7 @@ for epoch_i in itertools.count(0):
     logger.debug("vocab len:%d", len(vocab))
     logger.debug("stoi len:%d", len(vocab.stoi))
     logger.info("evaluating dev set...")
-    dev_ppl = evaluate(model, dev_samples)
+    dev_ppl = common.evaluate(model, dev_samples, vocab)
     logger.info("dev ppl:%s", dev_ppl)
 
     if dev_ppl < best_dev_ppl:
@@ -360,7 +248,7 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", best_dev_ppl)
         stagnation_epochs = 0
-        saveCheckPoint(model, optimizer, vocab, step, epoch_i)
+        check_point.saveCheckPoint(model, optimizer, vocab, step, epoch_i)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)

@@ -1,4 +1,5 @@
 import sample
+import random
 import torch
 import utils
 
@@ -59,3 +60,63 @@ class LmDataset(torch.utils.data.Dataset):
         return self.src_sentence_tensor[idx], self.tgt_ids_arr[idx],\
                 self.src_key_padding_mask[idx], self.prediction_positions_arr[idx],\
                 self.sentence_lens[idx]
+
+def wordIndexes(words, stoi, vocab_len):
+    return [stoi[word] for word in words]
+
+def pad_batch(word_ids_arr, lenghs):
+    tensor = torch.ones(len(word_ids_arr), max(lenghs), dtype = int)
+    for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lenghs)):
+        x = torch.LongTensor(ids)
+        tensor[idx, :seq_len] = x
+    return tensor
+
+def applyLangMask(ids_arr, mask_id, vocab_size, max_len, rg):
+    prediction_positions_arr = [None] * len(ids_arr)
+
+    logger.debug("ids_arr len:%d", len(ids_arr))
+    for ids_arr_i, ids in enumerate(ids_arr):
+        if ids_arr_i % 10000 == 0:
+            logger.info("applying mask... %f", float(ids_arr_i) / len(ids_arr))
+        l = []
+        masked = False
+        while not masked:
+            l = []
+            for i in range(max_len):
+                r = rg.random()
+                if i >= len(ids):
+                    l.append(False)
+                    continue
+                if r < 0.15:
+                    masked = True
+                    l.append(True)
+                    if r < 0.12:
+                        ids[i] = mask_id
+                    elif r < 0.135:
+                        ids[i] = rg.randint(0, vocab_size - 1)
+                else:
+                    l.append(False)
+        prediction_positions_arr[ids_arr_i] = l
+
+    result = torch.BoolTensor(prediction_positions_arr)
+    logger.debug("result size:%s", result.size())
+    return result
+
+def buildLmDataset(samples, stoi, vocab_len, rg = random):
+    words_arr = [s.split(" ") for s in samples]
+
+    logger.info("transfering words to ids...")
+    src_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in words_arr]
+    tgt_sentences_indexes_arr = [wordIndexes(s, stoi, vocab_len) for s in words_arr]
+    mask_id = stoi["<mask>"]
+    sentence_lens = [len(s) for s in words_arr]
+    prediction_positions_arr = applyLangMask(src_sentences_indexes_arr, mask_id, vocab_len,
+            max(sentence_lens), rg)
+    logger.debug("prediction_positions_arr len:%d", len(prediction_positions_arr))
+    logger.debug("prediction_positions_arr size:%s", prediction_positions_arr.size())
+    src_key_padding_mask = utils.srcMask(src_sentences_indexes_arr, sentence_lens)
+    src_sentence_tensor = pad_batch(src_sentences_indexes_arr, sentence_lens)
+    tgt_sentence_tensor = pad_batch(tgt_sentences_indexes_arr, sentence_lens)
+
+    return LmDataset(src_sentence_tensor, tgt_sentence_tensor, src_key_padding_mask,
+            prediction_positions_arr, sentence_lens)

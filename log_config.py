@@ -7,7 +7,7 @@ FORMAT = "%(levelname)s - %(asctime)s - %(filename)s - %(funcName)s -\
 LOG_FILENAME = "log-{}".format(datetime.datetime.now()).replace(" ", "-")
 logging.basicConfig(format = FORMAT,
 #         filename = LOG_FILENAME,
-        filename = "log",
+#         filename = "log",
         level = logging.INFO)
 
 # getLogger("train").setLevel(DEBUG)
@@ -16,3 +16,5 @@ logging.basicConfig(format = FORMAT,
 # getLogger("lm_train").setLevel(DEBUG)
 # getLogger("lm_module").setLevel(DEBUG)
 # getLogger("positional").setLevel(DEBUG)
+# getLogger("evaluate").setLevel(DEBUG)
+# getLogger("common").setLevel(DEBUG)

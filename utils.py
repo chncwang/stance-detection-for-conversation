@@ -27,3 +27,4 @@ def srcMask(word_ids_arr, lens):
     for idx, (ids, seq_len) in enumerate(zip(word_ids_arr, lens)):
         tensor[idx, seq_len:] = torch.FloatTensor([True] * (max_len - seq_len))
     return tensor
+
