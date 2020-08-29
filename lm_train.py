@@ -199,6 +199,7 @@ if configs.model_file is None:
 else:
     logger.info("loading %s...", configs.model_file)
     model, optimizer, vocab, step = loadCheckPoint(configs.model_file)
+    step += 1
 
 def buildDatasetAndGenerator(samples, stoi, vocab_len):
     training_set = buildDataset(samples, stoi, vocab_len)
@@ -359,7 +360,7 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", best_dev_ppl)
         stagnation_epochs = 0
-        saveCheckPoint(model, optimizer, vocab, lr, epoch_i)
+        saveCheckPoint(model, optimizer, vocab, step, epoch_i)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
