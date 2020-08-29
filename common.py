@@ -15,7 +15,7 @@ def evaluate(model, samples, vocab):
     loss_sum = 0.0
     dataset_len_sum = 0
     with torch.no_grad():
-        for i in range(1):
+        for i in range(10):
             logger.debug("vocab len:%d", len(vocab))
             logger.debug("stoi len:%d", len(vocab.stoi))
             evaluation_set = dataset.buildLmDataset(samples, vocab.stoi, len(vocab))
