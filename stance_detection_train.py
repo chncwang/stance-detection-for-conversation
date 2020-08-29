@@ -1,4 +1,5 @@
 import datetime
+import check_point
 import math
 import sys
 import classifier
@@ -38,8 +39,8 @@ printHyperParams()
 
 torch.manual_seed(hyper_params.seed)
 
-posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts")
-responses = dataset.readConversationSentences("/var/wqs/weibo_dialogue/responses")
+posts = dataset.readConversationSentences("/var/wqs/weibo_dialogue/posts-bpe")
+responses = dataset.readConversationSentences("/var/wqs/weibo_dialogue/responses-bpe")
 
 def readSamples(path):
     return dataset.readSamples(path, posts, responses)
@@ -131,8 +132,14 @@ if g_max_len >= configs.MAX_LEN_FOR_POSITIONAL_ENCODING:
     logger.error("g_max_len:%d MAX_LEN_FOR_POSITIONAL_ENCODING:%d", g_max_len,
             configs.MAX_LEN_FOR_POSITIONAL_ENCODING)
     sys.exit(1)
+
 model = classifier.TransformerClassifier(embedding_table,
         configs.MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
+if configs.model_file is not None:
+    lm_model, _, vocab, _ = check_point.loadCheckPoint(configs.model_file)
+    model.embedding = lm_model.embedding
+    model.input_linear = lm_model.input_linear
+    model.transformer = lm_model.transformer
 PAD_ID = vocab.stoi["<pad>"]
 
 CPU_DEVICE = torch.device("cpu")
@@ -167,7 +174,7 @@ best_epoch_i = 0
 best_dev_macro, best_test_macro = 0.0, 0.0
 
 for epoch_i in itertools.count(0):
-    if stagnation_epochs >= 10:
+    if stagnation_epochs >= 20:
         break
     batch_i = -1
     predicted_idxes = []
