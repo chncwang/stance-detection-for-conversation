@@ -40,7 +40,7 @@ def readLmSentences(path, posts, responses, rate = 1.0):
         strs = line.split(" ")
         pi, ri = int(strs[0]), int(strs[1])
         p, r = posts[pi], responses[ri]
-        sentences.append(p + " <sep> " + r)
+        sentences.append("<cls> " + p + " <sep> " + r)
     logger.debug("len:%d sentences:%s", len(sentences), sentences[:5])
     return sentences
 
