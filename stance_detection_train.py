@@ -220,16 +220,18 @@ for epoch_i in itertools.count(0):
     for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in training_generator:
         batch_i += 1
         step += 1
-        if epoch_i == 0 and hyper_params.gradual_unfreeze:
-            lr = 1
-        else:
-            lr = min(1, step / hyper_params.warm_up_steps)
+        cut = hyper_params.warm_up_steps * hyper_params.cut_frac
+        p = (step / cut) if step < cut else 1 - (step - cut) / (cut * (1.0 / hyper_params.cut_frac\
+                - 1))
+        p = (1 + p * (hyper_params.ratio - 1)) / hyper_params.ratio
+        if p < 0:
+            break
 
         should_print = batch_i * hyper_params.batch_size % 100 == 0
         if should_print:
             words = [vocab.itos[x] for x in sentence_tensor[0] if x != PAD_ID]
             logger.info("sentence:%s", " ".join(words))
-            logger.info("step:%d lr:%f", step, lr)
+            logger.info("step:%d p:%f", step, p)
 
         model.zero_grad()
         sentence_tensor = sentence_tensor.to(device = configs.device)
@@ -246,7 +248,7 @@ for epoch_i in itertools.count(0):
         for g in optimizer.param_groups:
             logger.debug("g:%s", g)
             if not isMlpToLabelLayer(g):
-                g["lr"] = lr * initial_lr_dict[id(g)]
+                g["lr"] = p * initial_lr_dict[id(g)]
             if should_print:
                 logger.info("per layer lr:%f", g["lr"])
         optimizer.step()

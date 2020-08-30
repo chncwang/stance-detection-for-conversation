@@ -12,3 +12,5 @@ layer = 4
 warm_up_steps = 1000
 gradual_unfreeze = True
 layer_lr_decay = 0.5
+ratio = 32
+cut_frac = 0.2
