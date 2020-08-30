@@ -135,11 +135,24 @@ if g_max_len >= configs.MAX_LEN_FOR_POSITIONAL_ENCODING:
 
 model = classifier.TransformerClassifier(embedding_table,
         configs.MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
-if configs.model_file is not None:
-    lm_model, _, vocab, _ = check_point.loadCheckPoint(configs.model_file)
-    model.embedding = lm_model.embedding
-    model.input_linear = lm_model.input_linear
-    model.transformer = lm_model.transformer
+
+lm_model, _, vocab, _ = check_point.loadCheckPoint(configs.model_file)
+model.embedding = lm_model.embedding
+model.input_linear = lm_model.input_linear
+model.transformer = lm_model.transformer
+
+def setGradRequired(weights, required):
+    for w in weights:
+        if isinstance(w, list):
+            setGradRequired(w, required)
+        else:
+            w.requires_grad = required
+
+if hyper_params.gradual_unfreeze:
+    model.embedding.weight.requires_grad = False
+    for l in model.transformer.layers:
+        setGradRequired(l.parameters(), False)
+
 PAD_ID = vocab.stoi["<pad>"]
 
 CPU_DEVICE = torch.device("cpu")
@@ -166,15 +179,31 @@ def evaluate(model, samples):
 
 step = 0
 
-optimizer = optim.Adam(model.parameters(), lr = hyper_params.learning_rate, betas = (0.9, 0.98),
+def isMlpToLabelLayer(group):
+    return math.fabs(group["lr"] - hyper_params.learning_rate - 1e-6) < 1e-10
+
+param_lr_list = [{"params": model.mlp_to_label.parameters(),
+        "lr": hyper_params.learning_rate + 1e-6}]
+lr = hyper_params.learning_rate
+for i in range(hyper_params.layer - 1, -1, -1):
+    logger.info("layer %d initial lr:%f", i, lr)
+    param_lr_list.append({"params": model.transformer.layers[i].parameters(),
+            "lr": lr})
+    lr *= hyper_params.layer_lr_decay
+
+optimizer = optim.Adam(param_lr_list, lr = hyper_params.learning_rate, betas = (0.9, 0.98),
         eps = 1e-9, weight_decay = hyper_params.weight_decay)
+
+initial_lr_dict = {}
+for g in optimizer.param_groups:
+    initial_lr_dict[id(g)] = g["lr"]
 
 stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_macro, best_test_macro = 0.0, 0.0
 
 for epoch_i in itertools.count(0):
-    if stagnation_epochs >= 20:
+    if stagnation_epochs >= 2000:
         break
     batch_i = -1
     predicted_idxes = []
@@ -182,10 +211,19 @@ for epoch_i in itertools.count(0):
     loss_sum = 0.0
     logger.info("epoch:%d batch count:%d", epoch_i,
             len(training_samples) / hyper_params.batch_size)
+
+    if 0 < epoch_i <= hyper_params.layer:
+        setGradRequired(model.transformer.layers[hyper_params.layer - epoch_i].parameters(), True)
+    if epoch_i == 1:
+        step = 0
+
     for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in training_generator:
         batch_i += 1
         step += 1
-        lr = hyper_params.learning_rate * min(1, step / hyper_params.warm_up_steps)
+        if epoch_i == 0 and hyper_params.gradual_unfreeze:
+            lr = 1
+        else:
+            lr = min(1, step / hyper_params.warm_up_steps)
 
         should_print = batch_i * hyper_params.batch_size % 100 == 0
         if should_print:
@@ -198,11 +236,19 @@ for epoch_i in itertools.count(0):
         predicted = model(sentence_tensor, sentence_lens, src_key_padding_mask)
         label_tensor = label_tensor.to(device = configs.device)
         loss = nn.CrossEntropyLoss()(predicted, label_tensor)
+        if math.isnan(loss):
+            logger.error("predicted:%f", predicted)
+            logger.error("label_tensor:%f", label_tensor)
+            sys.exit(1)
         loss.backward()
         if hyper_params.clip_grad is not None:
             nn.utils.clip_grad_norm_(model.parameters(), hyper_params.clip_grad)
         for g in optimizer.param_groups:
-            g["lr"] = lr
+            logger.debug("g:%s", g)
+            if not isMlpToLabelLayer(g):
+                g["lr"] = lr * initial_lr_dict[id(g)]
+            if should_print:
+                logger.info("output layer lr:%f", g["lr"])
         optimizer.step()
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
@@ -213,9 +259,11 @@ for epoch_i in itertools.count(0):
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
             logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
                     len(ground_truths))
+            logger.info("loss:%f", loss_sum / len(ground_truths))
 
     acc = metrics.accuracy_score(ground_truths, predicted_idxes)
     logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths), len(ground_truths))
+    logger.info("loss:%f", loss_sum / len(ground_truths))
     logger.info("evaluating dev set...")
     dev_score = evaluate(model, dev_samples)
     logger.info("dev:%s", dev_score)

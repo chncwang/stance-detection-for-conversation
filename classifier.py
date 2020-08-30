@@ -21,7 +21,7 @@ class TransformerClassifier(nn.Module):
         self.input_linear = nn.Linear(hyper_params.word_dim, hyper_params.hidden_dim)
         encoder_layer = nn.TransformerEncoderLayer(hyper_params.hidden_dim, 8)
         self.transformer = nn.TransformerEncoder(encoder_layer, hyper_params.layer)
-        self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3)
+        self.mlp_to_label = nn.Linear(hyper_params.hidden_dim * 2, 3)
         self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
         self.positional_encoding = positional.PositionalEncoding(hyper_params.hidden_dim,
                 dropout = hyper_params.dropout, max_len = max_len_for_positional_encoding)
@@ -54,8 +54,10 @@ class TransformerClassifier(nn.Module):
 
         hiddens = hiddens.permute(0, 2, 1)
         logger.debug("hiddens:%s", hiddens)
-        sentence_pooled = nn.MaxPool1d(max_len)(hiddens)
-        logger.debug("sentence_pooled size:%s", sentence_pooled.size())
-        sentence_pooled = sentence_pooled.permute(0, 2, 1)
-        output = self.mlp_to_label(sentence_pooled)
+        max_pooled = nn.MaxPool1d(max_len)(hiddens)
+        max_pooled = max_pooled.permute(0, 2, 1)
+        avg_pooled = nn.AvgPool1d(max_len)(hiddens)
+        avg_pooled = avg_pooled.permute(0, 2, 1)
+        pooled = torch.cat((max_pooled, avg_pooled), 2)
+        output = self.mlp_to_label(pooled)
         return output.view(batch_size, 3)
