@@ -135,11 +135,6 @@ if g_max_len >= configs.MAX_LEN_FOR_POSITIONAL_ENCODING:
 
 model = classifier.TransformerClassifier(embedding_table,
         configs.MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
-if configs.model_file is not None:
-    lm_model, _, vocab, _ = check_point.loadCheckPoint(configs.model_file)
-    model.embedding = lm_model.embedding
-    model.input_linear = lm_model.input_linear
-    model.transformer = lm_model.transformer
 PAD_ID = vocab.stoi["<pad>"]
 
 CPU_DEVICE = torch.device("cpu")
@@ -213,9 +208,11 @@ for epoch_i in itertools.count(0):
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
             logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
                     len(ground_truths))
+            logger.info("loss:%f", loss_sum / len(ground_truths))
 
     acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-    logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths), len(ground_truths))
+    logger.info("whole avg acc:%f correct:%d total:%d", acc, acc * len(ground_truths), len(ground_truths))
+    logger.info("whole avg loss:%f", loss_sum / len(ground_truths))
     logger.info("evaluating dev set...")
     dev_score = evaluate(model, dev_samples)
     logger.info("dev:%s", dev_score)
