@@ -19,7 +19,7 @@ class TransformerClassifier(nn.Module):
         super(TransformerClassifier, self).__init__()
         self.embedding = embedding
         self.input_linear = nn.Linear(hyper_params.word_dim, hyper_params.hidden_dim)
-        encoder_layer = nn.TransformerEncoderLayer(hyper_params.hidden_dim, 8)
+        encoder_layer = nn.TransformerEncoderLayer(hyper_params.hidden_dim, 8, activation = "gelu")
         self.transformer = nn.TransformerEncoder(encoder_layer, hyper_params.layer)
         self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3, bias = True)
         self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
@@ -54,7 +54,7 @@ class TransformerClassifier(nn.Module):
 
         hiddens = hiddens.permute(0, 2, 1)
         logger.debug("hiddens:%s", hiddens)
-        max_pooled = nn.MaxPool1d(max_len)(hiddens)
+        max_pooled = nn.AvgPool1d(max_len)(hiddens)
         max_pooled = max_pooled.permute(0, 2, 1)
         output = self.mlp_to_label(max_pooled)
         logger.debug("output:%s", output)

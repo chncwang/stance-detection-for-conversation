@@ -140,6 +140,7 @@ lm_model, _, vocab, _ = check_point.loadCheckPoint(configs.model_file)
 model.embedding = lm_model.embedding
 model.input_linear = lm_model.input_linear
 model.transformer = lm_model.transformer
+del lm_model
 
 def setGradRequired(weights, required):
     for w in weights:
@@ -167,15 +168,19 @@ def evaluate(model, samples):
             **evaluation_loader_params)
         predicted_idxes = []
         ground_truths = []
+        loss_sum = 0.0
         for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor\
                 in evaluation_generator:
             sentence_tensor = sentence_tensor.to(device = configs.device)
             predicted = model(sentence_tensor, sentence_lens, src_key_padding_mask)
+            loss = nn.CrossEntropyLoss()(predicted, label_tensor.to(device = configs.device))
+            loss_sum += loss
             predicted_idx = torch.max(predicted, 1)[1]
             predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.int())
             ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
     model.train()
-    return metrics.f1_score(ground_truths, predicted_idxes, average = None)
+    return metrics.f1_score(ground_truths, predicted_idxes, average = None),\
+            loss_sum / len(ground_truths) * configs.evaluation_batch_size
 
 step = 0
 
@@ -261,20 +266,20 @@ for epoch_i in itertools.count(0):
             acc = metrics.accuracy_score(ground_truths, predicted_idxes)
             logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
                     len(ground_truths))
-            logger.info("loss:%f", loss_sum / len(ground_truths))
+            logger.info("loss:%f", loss_sum / len(ground_truths) * hyper_params.batch_size)
 
     acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-    logger.info("acc:%f correct:%d total:%d", acc, acc * len(ground_truths), len(ground_truths))
-    logger.info("loss:%f", loss_sum / len(ground_truths))
+    logger.info("whole avg acc:%f correct:%d total:%d", acc, acc * len(ground_truths), len(ground_truths))
+    logger.info("whole avg loss:%f", loss_sum / len(ground_truths) * hyper_params.batch_size)
     logger.info("evaluating dev set...")
-    dev_score = evaluate(model, dev_samples)
-    logger.info("dev:%s", dev_score)
+    dev_score, dev_loss = evaluate(model, dev_samples)
+    logger.info("dev:%s loss:%f", dev_score, dev_loss)
     dev_macro = 0.5 * (dev_score[0] + dev_score[1])
     logger.info("dev macro:%f", dev_macro)
 
     logger.info("evaluating test set...")
-    test_score = evaluate(model, test_samples)
-    logger.info("test:%s", test_score)
+    test_score, test_loss = evaluate(model, test_samples)
+    logger.info("test:%s loss:%f", test_score, test_loss)
     test_macro = 0.5 * (test_score[0] + test_score[1])
     logger.info("test macro:%f", test_macro)
 
