@@ -21,7 +21,7 @@ class TransformerClassifier(nn.Module):
         self.input_linear = nn.Linear(hyper_params.word_dim, hyper_params.hidden_dim)
         encoder_layer = nn.TransformerEncoderLayer(hyper_params.hidden_dim, 8)
         self.transformer = nn.TransformerEncoder(encoder_layer, hyper_params.layer)
-        self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3)
+        self.mlp_to_label = nn.Linear(hyper_params.hidden_dim, 3, bias = True)
         self.dropout = nn.Dropout(p = hyper_params.dropout, inplace = True)
         self.positional_encoding = positional.PositionalEncoding(hyper_params.hidden_dim,
                 dropout = hyper_params.dropout, max_len = max_len_for_positional_encoding)
@@ -45,7 +45,7 @@ class TransformerClassifier(nn.Module):
         max_len = hiddens.size()[1]
 
         for idx, sent_hiddens in enumerate(hiddens):
-            x = torch.FloatTensor([-math.inf] * hyper_params.hidden_dim *
+            x = torch.FloatTensor([0.0] * hyper_params.hidden_dim *
                     (max_len - sentence_lens[idx])).view(max_len - sentence_lens[idx],
                                     hyper_params.hidden_dim)
             logger.debug("x size:%s hiddens[idx] size:%s len:%d", x.size(), hiddens[idx].size(),

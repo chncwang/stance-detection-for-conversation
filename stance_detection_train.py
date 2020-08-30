@@ -180,11 +180,12 @@ def evaluate(model, samples):
 step = 0
 
 def isMlpToLabelLayer(group):
-    return math.fabs(group["lr"] - hyper_params.learning_rate - 1e-6) < 1e-10
+    return math.fabs(group["lr"] - hyper_params.learning_rate - 1e-8) < 1e-10
 
 param_lr_list = [{"params": model.mlp_to_label.parameters(),
-        "lr": hyper_params.learning_rate + 1e-6}]
+        "lr": hyper_params.learning_rate + 1e-8}]
 lr = hyper_params.learning_rate
+logger.debug("layer count:%d", len(model.transformer.layers))
 for i in range(hyper_params.layer - 1, -1, -1):
     logger.info("layer %d initial lr:%f", i, lr)
     param_lr_list.append({"params": model.transformer.layers[i].parameters(),
@@ -247,8 +248,7 @@ for epoch_i in itertools.count(0):
             nn.utils.clip_grad_norm_(model.parameters(), hyper_params.clip_grad)
         for g in optimizer.param_groups:
             logger.debug("g:%s", g)
-            if not isMlpToLabelLayer(g):
-                g["lr"] = p * initial_lr_dict[id(g)]
+            g["lr"] = p * initial_lr_dict[id(g)]
             if should_print:
                 logger.info("per layer lr:%f", g["lr"])
         optimizer.step()
