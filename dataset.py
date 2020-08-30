@@ -71,7 +71,7 @@ def pad_batch(word_ids_arr, lenghs):
         tensor[idx, :seq_len] = x
     return tensor
 
-def applyLangMask(ids_arr, mask_id, vocab_size, max_len, rg):
+def applyLangMask(ids_arr, mask_id, vocab_size, max_len, rg, p = 1.0):
     prediction_positions_arr = [None] * len(ids_arr)
 
     logger.debug("ids_arr len:%d", len(ids_arr))
@@ -87,15 +87,17 @@ def applyLangMask(ids_arr, mask_id, vocab_size, max_len, rg):
                 if i >= len(ids):
                     l.append(False)
                     continue
-                if r < 0.15:
+                if r < 0.15 * p:
                     masked = True
                     l.append(True)
-                    if r < 0.12:
+                    if r < 0.12 * p:
                         ids[i] = mask_id
-                    elif r < 0.135:
+                    elif r < 0.135 * p:
                         ids[i] = rg.randint(0, vocab_size - 1)
                 else:
                     l.append(False)
+            if p < 1:
+                break
         prediction_positions_arr[ids_arr_i] = l
 
     result = torch.BoolTensor(prediction_positions_arr)

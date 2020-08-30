@@ -1,4 +1,5 @@
 import datetime
+import random
 import check_point
 import math
 import sys
@@ -110,10 +111,13 @@ def pad_batch(word_ids_arr, lens):
         tensor[idx, :seq_len] = x
     return tensor
 
-def buildDataset(samples, stoi):
+def buildDataset(samples, stoi, apply_mask = 0.0):
     sentences = [s.post + " <sep> " + s.response for s in samples]
     words_arr = [s.split(" ") for s in sentences]
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
+    if apply_mask > 0:
+        dataset.applyLangMask(sentences_indexes_arr, stoi["<mask>"], len(vocab),
+                max([len(x) for x in words_arr]), rg = random, p = apply_mask)
     sentence_lens = [len(s) for s in words_arr]
     labels = [int(s.stance) for s in samples]
     sentence_tensor = pad_batch(sentences_indexes_arr, sentence_lens)
@@ -122,11 +126,6 @@ def buildDataset(samples, stoi):
 
     return dataset.StanceDetectionDataset(sentence_tensor, sentence_lens, src_key_padding_mask,
             label_tensor)
-
-training_set = buildDataset(training_samples, vocab.stoi)
-
-data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
-training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)
 
 if g_max_len >= configs.MAX_LEN_FOR_POSITIONAL_ENCODING:
     logger.error("g_max_len:%d MAX_LEN_FOR_POSITIONAL_ENCODING:%d", g_max_len,
@@ -141,6 +140,11 @@ model.embedding = lm_model.embedding
 model.input_linear = lm_model.input_linear
 model.transformer = lm_model.transformer
 del lm_model
+
+training_set = buildDataset(training_samples, vocab.stoi, apply_mask = 1)
+
+data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
+training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)
 
 def setGradRequired(weights, required):
     for w in weights:
@@ -207,6 +211,7 @@ for g in optimizer.param_groups:
 stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_macro, best_test_macro = 0.0, 0.0
+mask_p = 1
 
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 2000:
@@ -295,3 +300,9 @@ for epoch_i in itertools.count(0):
         logger.info("stagnation_epochs:%d", stagnation_epochs)
     logger.info("best epoch:%d dev_macro:%f test_macro:%f", best_epoch_i, best_dev_macro,
             best_test_macro)
+
+    mask_p *= 0.5
+    training_set = buildDataset(training_samples, vocab.stoi, apply_mask = mask_p)
+
+    data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
+    training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)

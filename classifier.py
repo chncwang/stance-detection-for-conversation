@@ -36,7 +36,6 @@ class TransformerClassifier(nn.Module):
         word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
         word_vectors = word_vectors.permute(1, 0, 2)
         word_vectors = self.positional_encoding(word_vectors)
-        self.dropout(word_vectors)
         hiddens = self.transformer(word_vectors, src_key_padding_mask = src_key_padding_mask)
         self.dropout(hiddens)
         logger.debug("hiddens size:%s", hiddens.size())
