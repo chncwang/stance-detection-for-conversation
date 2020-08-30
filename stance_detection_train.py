@@ -248,7 +248,7 @@ for epoch_i in itertools.count(0):
             if not isMlpToLabelLayer(g):
                 g["lr"] = lr * initial_lr_dict[id(g)]
             if should_print:
-                logger.info("output layer lr:%f", g["lr"])
+                logger.info("per layer lr:%f", g["lr"])
         optimizer.step()
         predicted_idx = torch.max(predicted, 1)[1]
         predicted_idxes += list(predicted_idx.to(device = CPU_DEVICE).data.
