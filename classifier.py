@@ -51,10 +51,9 @@ class TransformerClassifier(nn.Module):
                     sentence_lens[idx])
             sent_hiddens[sentence_lens[idx]:] = x
 
-        hiddens = hiddens.permute(0, 2, 1)
+        logger.debug("hiddens size:%s", hiddens.size())
+        hiddens = hiddens.permute(1, 0, 2)
         logger.debug("hiddens:%s", hiddens)
-        max_pooled = nn.AvgPool1d(max_len)(hiddens)
-        max_pooled = max_pooled.permute(0, 2, 1)
-        output = self.mlp_to_label(max_pooled)
-        logger.debug("output:%s", output)
+        cls = hiddens[0]
+        output = self.mlp_to_label(cls)
         return output.view(batch_size, 3)

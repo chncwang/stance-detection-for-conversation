@@ -68,9 +68,12 @@ def sentenceToCounter(sentence, counter):
     words = sentence.split(" ")
     return counter.update(words)
 
+def concatSentencePair(p, r):
+    return "<cls> " + p + " <sep> " + r
+
 counter = collections.Counter()
 for idx, sample in enumerate(to_build_vocb_samples):
-    sentenceToCounter(sample.post + " <sep> " + sample.response, counter)
+    sentenceToCounter(concatSentencePair(sample.post, sample.response), counter)
 
 def oovCount(sentence, counter):
     words = sentence.split(" ")
@@ -83,7 +86,7 @@ def oovCount(sentence, counter):
 oov_count = 0
 all_words_count = 0
 for idx, sample in enumerate(to_build_vocb_samples):
-    t = oovCount(sample.post + " <sep> " + sample.response, counter)
+    t = oovCount(concatSentencePair(sample.post, sample.response), counter)
     oov_count += t[0]
     all_words_count += t[1]
 
@@ -112,7 +115,7 @@ def pad_batch(word_ids_arr, lens):
     return tensor
 
 def buildDataset(samples, stoi, apply_mask = 0.0):
-    sentences = [s.post + " <sep> " + s.response for s in samples]
+    sentences = [concatSentencePair(s.post, s.response) for s in samples]
     words_arr = [s.split(" ") for s in sentences]
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     if apply_mask > 0:
@@ -141,7 +144,7 @@ model.input_linear = lm_model.input_linear
 model.transformer = lm_model.transformer
 del lm_model
 
-training_set = buildDataset(training_samples, vocab.stoi, apply_mask = 1)
+training_set = buildDataset(training_samples, vocab.stoi, apply_mask = 0)
 
 data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
 training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)
@@ -211,7 +214,7 @@ for g in optimizer.param_groups:
 stagnation_epochs = 0
 best_epoch_i = 0
 best_dev_macro, best_test_macro = 0.0, 0.0
-mask_p = 1
+mask_p = hyper_params.mask_p
 
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 2000:
@@ -227,6 +230,11 @@ for epoch_i in itertools.count(0):
         setGradRequired(model.transformer.layers[hyper_params.layer - epoch_i].parameters(), True)
     if epoch_i == 1:
         step = 0
+
+    if mask_p > 0:
+        training_set = buildDataset(training_samples, vocab.stoi, apply_mask = mask_p)
+        data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
+        training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)
 
     for sentence_tensor, sentence_lens, src_key_padding_mask, label_tensor in training_generator:
         batch_i += 1
@@ -258,7 +266,8 @@ for epoch_i in itertools.count(0):
             nn.utils.clip_grad_norm_(model.parameters(), hyper_params.clip_grad)
         for g in optimizer.param_groups:
             logger.debug("g:%s", g)
-            g["lr"] = p * initial_lr_dict[id(g)]
+            if not (hyper_params.is_output_lr_normal and isMlpToLabelLayer(g)):
+                g["lr"] = p * initial_lr_dict[id(g)]
             if should_print:
                 logger.info("per layer lr:%f", g["lr"])
         optimizer.step()
@@ -274,8 +283,10 @@ for epoch_i in itertools.count(0):
             logger.info("loss:%f", loss_sum / len(ground_truths) * hyper_params.batch_size)
 
     acc = metrics.accuracy_score(ground_truths, predicted_idxes)
-    logger.info("whole avg acc:%f correct:%d total:%d", acc, acc * len(ground_truths), len(ground_truths))
-    logger.info("whole avg loss:%f", loss_sum / len(ground_truths) * hyper_params.batch_size)
+    logger.info("whole avg acc:%f correct:%d total:%d", acc, acc * len(ground_truths),
+            len(ground_truths))
+    training_avg_loss = loss_sum / len(ground_truths) * hyper_params.batch_size
+    logger.info("whole avg loss:%f", training_avg_loss)
     logger.info("evaluating dev set...")
     dev_score, dev_loss = evaluate(model, dev_samples)
     logger.info("dev:%s loss:%f", dev_score, dev_loss)
@@ -301,8 +312,12 @@ for epoch_i in itertools.count(0):
     logger.info("best epoch:%d dev_macro:%f test_macro:%f", best_epoch_i, best_dev_macro,
             best_test_macro)
 
-    mask_p *= 0.5
-    training_set = buildDataset(training_samples, vocab.stoi, apply_mask = mask_p)
+    if acc > 0.8:
+        logger.info("acc is large enough")
+        break
 
-    data_loader_params = { "batch_size": hyper_params.batch_size, "shuffle": True }
-    training_generator = torch.utils.data.DataLoader(training_set, **data_loader_params)
+    if (dev_loss + test_loss) * 0.5 > training_avg_loss and training_avg_loss > 1:
+        logger.info("early overfitting, too hopeless")
+        break
+
+    mask_p *= 0.5
