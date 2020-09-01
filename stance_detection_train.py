@@ -236,7 +236,8 @@ for epoch_i in itertools.count(0):
                 (cut * (1.0 / hyper_params.cut_frac - 1));
         p = (1 + p * (hyper_params.ratio - 1)) / hyper_params.ratio
         if p < 0:
-            break
+            logger.info("training end")
+            sys.exit(0)
         for g in optimizer.param_groups:
             g["lr"] = p * initial_lr_dict[id(g)]
             if batch_i % 10 == 0:
@@ -293,6 +294,7 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", best_dev_macro)
         stagnation_epochs = 0
+        utils.saveCheckPoint(model, optimizer, vocab, hyper_params.learning_rate, epoch_i)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)

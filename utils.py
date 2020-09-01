@@ -4,6 +4,7 @@ import os
 import configs
 import torch
 import torch.nn as nn
+import datetime
 
 def getLogger(filename):
     self_module = os.path.basename(filename[:-3])
@@ -43,3 +44,14 @@ def printConfigs():
     logger.info("device:%s", configs.device)
     logger.info("evaluation_batch_size:%d", configs.evaluation_batch_size)
     logger.info("lm_training_set_rate:%f", configs.lm_training_set_rate)
+
+def saveCheckPoint(model, optimizer, vocab, learning_rate, epoch):
+    state = {"model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "learning_rate": learning_rate,
+            "vocab": vocab}
+    path = "model-" + str(epoch) + "-" + datetime.datetime.now().strftime(
+            "%Y-%m-%d-%H-%M")
+    logger.info("path:%s", path)
+    logger.info("saving model...")
+    torch.save(state, path)

@@ -131,17 +131,6 @@ def buildDataset(samples, stoi):
     return dataset.LmDataset(l2r_src_sentence_tensor, l2r_tgt_sentence_tensor,
             r2l_src_sentence_tensor, r2l_tgt_sentence_tensor, sentence_lens)
 
-def saveCheckPoint(model, optimizer, vocab, learning_rate, epoch):
-    state = {"model": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "learning_rate": learning_rate,
-            "vocab": vocab}
-    path = "model-" + str(epoch) + "-" + datetime.datetime.now().strftime(
-            "%Y-%m-%d-%H-%M")
-    logger.info("path:%s", path)
-    logger.info("saving model...")
-    torch.save(state, path)
-
 model, optimizer, learning_rate = None, None, None
 if configs.model_file is None:
     model = lm_module.LstmLm(embedding_table, len(vocab)).to(
@@ -307,7 +296,7 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", best_dev_ppl)
         stagnation_epochs = 0
-        saveCheckPoint(model, optimizer, vocab, learning_rate, epoch_i)
+        utils.saveCheckPoint(model, optimizer, vocab, learning_rate, epoch_i)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
