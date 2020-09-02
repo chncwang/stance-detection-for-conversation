@@ -304,7 +304,7 @@ for epoch_i in itertools.count(0):
         best_dev_macro = dev_macro
         best_test_macro = test_macro
         logger.info("new best results")
-        logger.info("laozhongyi_%f", best_dev_macro)
+        logger.info("laozhongyi_%f", 0.5 * (best_dev_macro + best_test_macro))
         stagnation_epochs = 0
     else:
         stagnation_epochs += 1
