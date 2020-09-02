@@ -216,6 +216,8 @@ best_epoch_i = 0
 best_dev_macro, best_test_macro = 0.0, 0.0
 mask_p = hyper_params.mask_p
 
+dev_score, dev_loss = evaluate(model, dev_samples)
+
 for epoch_i in itertools.count(0):
     if stagnation_epochs >= 2000:
         break

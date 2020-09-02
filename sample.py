@@ -24,10 +24,12 @@ def toStance(str):
         sys.exit(1)
 
 class Sample:
-    def __init__(self, post, response, stance):
+    def __init__(self, post, response, stance, post_id = None, response_id = None):
         self.post = post
         self.response = response
         self.stance = stance
+        self.post_id = post_id
+        self.response_id = response_id
 
     def __str__(self):
         return "post:{} response:{} stance:{}".format(self.post, self.response,

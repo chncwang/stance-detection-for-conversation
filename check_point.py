@@ -1,4 +1,5 @@
 import datetime
+import classifier
 import configs
 import imp
 import sys
@@ -33,3 +34,14 @@ def loadCheckPoint(path):
     step = state["step"]
 
     return model, optimizer, vocab, step
+
+def loadStanceDetectionCheckPoint(path):
+    state = torch.load(path)
+    vocab = state["vocab"]
+    embedding_table = nn.Embedding(len(vocab), hyper_params.word_dim)
+    model = classifier.TransformerClassifier(embedding_table,
+            configs.MAX_LEN_FOR_POSITIONAL_ENCODING).to(device = configs.device)
+    model.load_state_dict(state["model"])
+    step = state["step"]
+
+    return model, None, vocab, step

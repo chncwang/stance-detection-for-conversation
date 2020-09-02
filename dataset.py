@@ -15,21 +15,28 @@ def readSamples(path, posts, responses):
     lines = readLines(path)
     fragments = [line.split(" ") for line in lines]
     return [sample.Sample(posts[int(x[0])], responses[int(x[1])],
-            sample.toStance(x[2])) for x in fragments]
+            sample.toStance(x[2]), int(x[0]), int(x[1])) for x in fragments]
 
 class StanceDetectionDataset(torch.utils.data.Dataset):
-    def __init__(self, sentence_tensor, sentence_lengths, src_mask, label_tensor):
+    def __init__(self, sentence_tensor, sentence_lengths, src_mask, label_tensor,
+            post_ids = None, response_ids = None):
         self.sentence_tensor = sentence_tensor
         self.sentence_lengths = sentence_lengths
         self.src_mask = src_mask
         self.label_tensor = label_tensor
+        self.post_ids = post_ids
+        self.response_ids = response_ids
 
     def __len__(self):
         return len(self.label_tensor)
 
     def __getitem__(self, idx):
-        return self.sentence_tensor[idx], self.sentence_lengths[idx], self.src_mask[idx],\
-                self.label_tensor[idx]
+        if self.post_ids is None:
+            return self.sentence_tensor[idx], self.sentence_lengths[idx], self.src_mask[idx],\
+                    self.label_tensor[idx]
+        else:
+            return self.sentence_tensor[idx], self.sentence_lengths[idx], self.src_mask[idx],\
+                    self.label_tensor[idx], self.post_ids[idx], self.response_ids[idx]
 
 def readLmSentences(path, posts, responses, rate = 1.0):
     lines = readLines(path)
