@@ -6,7 +6,7 @@ FORMAT = "%(levelname)s - %(asctime)s - %(filename)s - %(funcName)s -\
 %(lineno)d - %(message)s"
 LOG_FILENAME = "log-{}".format(datetime.datetime.now()).replace(" ", "-")
 logging.basicConfig(format = FORMAT,
-        filename = LOG_FILENAME,
+#         filename = LOG_FILENAME,
 #         filename = "log",
         level = logging.INFO)
 

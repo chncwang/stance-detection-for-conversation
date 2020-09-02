@@ -306,6 +306,7 @@ for epoch_i in itertools.count(0):
         logger.info("new best results")
         logger.info("laozhongyi_%f", 0.5 * (best_dev_macro + best_test_macro))
         stagnation_epochs = 0
+        check_point.saveCheckPoint(model, optimizer, vocab, 0, 0)
     else:
         stagnation_epochs += 1
         logger.info("stagnation_epochs:%d", stagnation_epochs)
