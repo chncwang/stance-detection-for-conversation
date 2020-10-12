@@ -33,7 +33,6 @@ class TransformerClassifier(nn.Module):
         batch_size = sentence_tensor.size()[0]
         word_vectors = self.embedding(sentence_tensor).to(device = configs.device)
         word_vectors = self.input_linear(word_vectors)
-        word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
         word_vectors = word_vectors.permute(1, 0, 2)
         word_vectors = self.positional_encoding(word_vectors)
         hiddens = self.transformer(word_vectors, src_key_padding_mask = src_key_padding_mask)

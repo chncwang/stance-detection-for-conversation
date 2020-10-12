@@ -39,7 +39,6 @@ class TransformerLm(nn.Module):
         batch_size = sentence_tensor.size()[0]
         word_vectors = self.embedding(sentence_tensor).to(device = configs.device)
         word_vectors = self.input_linear(word_vectors)
-        word_vectors = word_vectors * math.sqrt(hyper_params.hidden_dim)
         word_vectors = word_vectors.permute(1, 0, 2)
         logger.debug("word_vectors size:%s", word_vectors.size())
         word_vectors = self.positional_encoding(word_vectors)
