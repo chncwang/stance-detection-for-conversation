@@ -199,7 +199,17 @@ def evaluate(model, samples):
                     int())
             ground_truths += list(label_tensor.to(device = CPU_DEVICE).int())
     model.train()
-    return metrics.f1_score(ground_truths, predicted_idxes, average = None)
+
+    favor_truths = [1 if x == 0 else 0 for x in ground_truths]
+    favor_predicted = [1 if x == 0 else 0 for x in predicted_idxes]
+    against_truths = [1 if x == 1 else 0 for x in ground_truths]
+    against_predicted = [1 if x == 1 else 0 for x in predicted_idxes]
+
+    return metrics.f1_score(ground_truths, predicted_idxes, average = None),\
+            metrics.precision_score(favor_truths, favor_predicted),\
+            metrics.recall_score(favor_truths, favor_predicted),\
+            metrics.precision_score(against_truths, against_predicted),\
+            metrics.recall_score(against_truths, against_predicted)
 
 initial_lr_dict = {}
 for g in optimizer.param_groups:
@@ -277,13 +287,13 @@ for epoch_i in itertools.count(0):
     logger.info("evaluating dev set...")
     dev_score = evaluate(model, dev_samples)
     logger.info("dev:%s", dev_score)
-    dev_macro = sum(dev_score[:2]) / 2.0
+    dev_macro = sum(dev_score[0][:2]) / 2.0
     logger.info("dev macro:%f", dev_macro)
 
     logger.info("evaluating test set...")
     test_score = evaluate(model, test_samples)
     logger.info("test:%s", test_score)
-    test_macro = 0.5 * (test_score[0] + test_score[1])
+    test_macro = 0.5 * (test_score[0][0] + test_score[0][1])
     logger.info("test macro:%f", test_macro)
 
     if dev_macro > best_dev_macro:
