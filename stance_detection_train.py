@@ -96,7 +96,7 @@ def pad_batch(word_ids_arr, lenghs):
     return tensor
 
 def buildDataset(samples, stoi):
-    sentences = [s.post + " <sep> " + s.response for s in samples]
+    sentences = [s.post for s in samples]
     words_arr = [s.split(" ") for s in sentences]
     sentences_indexes_arr = [word_indexes(s, stoi) for s in words_arr]
     sentence_lens = [len(s) for s in words_arr]
